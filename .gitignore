@@ -1,0 +1,48 @@
+# Build outputs
+dist/
+build/
+installer_output/
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+*.egg-info/
+.eggs/
+*.egg
+
+# Virtual environments
+venv/
+env/
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+
+# Temp files
+temp/
+cache/
+*.tmp
+
+# Distribution files
+*.zip
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Secrets
+*.pem
+*.key
+credentials.json
+
+# Windows reserved
+nul

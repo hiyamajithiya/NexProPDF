@@ -1,0 +1,109 @@
+================================================================================
+           NexPro PDF - DISTRIBUTION CHECKLIST
+           Prepared by CA Himanshu Majithiya
+================================================================================
+
+FILES INCLUDED IN DISTRIBUTION:
+================================
+
+📁 Core Application Files:
+  ✓ main_connected.py (Main entry point)
+  ✓ src/ (All source code)
+  ✓ config/ (Configuration files)
+  ✓ resources/ (Icons and assets)
+  ✓ data/ (Empty - for user data)
+  ✓ logs/ (Empty - for application logs)
+
+📁 Installation & Setup:
+  ✓ INSTALL.bat (Installation script)
+  ✓ RUN_NexPro.bat (Application launcher)
+  ✓ requirements.txt (Python dependencies)
+  ✓ LICENSE.txt (License agreement)
+
+📁 Documentation:
+  ✓ README.md (Complete user manual)
+  ✓ QUICK_START.txt (Quick installation guide)
+
+📁 Excluded from Distribution:
+  ✗ __pycache__/ folders
+  ✗ *.pyc files
+  ✗ Development files
+  ✗ .git/ folder
+  ✗ IDE configuration files
+  ✗ Test files
+  ✗ User logs and data
+
+================================================================================
+
+BEFORE CREATING PACKAGE:
+========================
+1. ☐ Test the application thoroughly
+2. ☐ Clear all __pycache__ folders
+3. ☐ Remove test files and logs
+4. ☐ Verify requirements.txt is up to date
+5. ☐ Update README.md with latest information
+6. ☐ Update version number if needed
+7. ☐ Test INSTALL.bat on fresh Windows machine
+8. ☐ Test RUN_NexPro.bat works correctly
+
+================================================================================
+
+TO CREATE DISTRIBUTION PACKAGE:
+===============================
+1. Review this checklist
+2. Run: CREATE_PACKAGE.bat
+3. File will be created: NexPro_PDF_v1.0.0.zip (in parent folder)
+4. Upload to website
+
+================================================================================
+
+RECOMMENDED UPLOAD LOCATIONS:
+============================
+• Website: www.himanshumajithiya.com
+• Google Drive (with download link)
+• OneDrive
+• Dropbox
+• Your own file server
+
+================================================================================
+
+DOWNLOAD PAGE SHOULD INCLUDE:
+============================
+• Download link to NexPro_PDF_v1.0.0.zip
+• System requirements
+• Installation instructions (or link to README)
+• Contact information
+• Subscription details
+• Screenshots/demo video (optional)
+
+================================================================================
+
+FILE SIZE ESTIMATE:
+==================
+Expected package size: 5-10 MB (compressed)
+Extracted size: 20-30 MB
+
+================================================================================
+
+PACKAGE INFORMATION:
+===================
+Product Name: NexPro PDF
+Version: 1.0.0
+Developer: CA Himanshu Majithiya
+License: 6-month trial, then subscription
+Platform: Windows 10/11 (64-bit)
+Requires: Python 3.8+
+
+================================================================================
+
+SUPPORT INFORMATION TO PROVIDE:
+===============================
+Email: support@himanshumajithiya.com
+Website: www.himanshumajithiya.com
+Phone: +91-XXXXXXXXXX
+WhatsApp: +91-XXXXXXXXXX
+
+================================================================================
+
+                        Ready for Distribution!
+================================================================================

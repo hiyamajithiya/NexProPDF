@@ -1,0 +1,40 @@
+# NexPro PDF Configuration
+
+app:
+  name: "NexPro PDF"
+  version: "1.0.0"
+  company: "CTPL"
+
+ui:
+  theme: "professional"
+  primary_color: "#2C3E50"  # Slate blue
+  accent_color: "#27AE60"   # Green
+  window_title: "NexPro PDF - Professional PDF Editor"
+  window_size:
+    width: 1400
+    height: 900
+
+performance:
+  max_pages_memory: 500
+  worker_threads: 4
+  cache_size_mb: 200
+
+security:
+  encryption_algorithm: "AES-256"
+  password_min_length: 8
+
+licensing:
+  grace_period_days: 7
+  revalidation_interval_hours: 24
+  server_url: "https://licensing.nexpro.com/validate"
+
+logging:
+  level: "INFO"
+  max_file_size_mb: 10
+  backup_count: 5
+
+paths:
+  temp_dir: "temp"
+  cache_dir: "cache"
+  log_dir: "logs"
+  data_dir: "data"

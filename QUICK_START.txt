@@ -1,0 +1,66 @@
+================================================================================
+              NexPro PDF - QUICK START GUIDE
+              Prepared by CA Himanshu Majithiya
+================================================================================
+
+Thank you for downloading NexPro PDF!
+
+INSTALLATION (3 Simple Steps):
+===============================
+
+1. INSTALL PYTHON (if not already installed)
+   - Download from: https://www.python.org/downloads/
+   - IMPORTANT: Check "Add Python to PATH" during installation
+
+2. INSTALL NEXPRO PDF
+   - Double-click: INSTALL.bat
+   - Wait 3-5 minutes for installation to complete
+
+3. RUN THE APPLICATION
+   - Double-click: RUN_NexPro.bat
+   - Application will start automatically
+
+================================================================================
+
+FREE 6-MONTH TRIAL:
+===================
+- All features unlocked for 180 days
+- No credit card required
+- Starts from first installation
+
+================================================================================
+
+FEATURES:
+=========
+✓ Create & Edit PDFs
+✓ Convert Word/Excel/PowerPoint to PDF
+✓ Add Text, Images, Shapes
+✓ Page Management (Insert, Delete, Rotate, Merge, Split)
+✓ Password Protection & Encryption
+✓ Redaction Tools
+✓ Digital Signatures
+✓ PDF Forms Creation
+✓ OCR & Batch Processing
+✓ And 40+ more features!
+
+================================================================================
+
+SUPPORT & SUBSCRIPTION:
+=======================
+For help, questions, or subscription after trial:
+
+CA Himanshu Majithiya
+Email: support@himanshumajithiya.com
+Website: www.himanshumajithiya.com
+
+================================================================================
+
+NEED HELP?
+==========
+Read the complete README.md file for detailed instructions.
+
+================================================================================
+
+                        Enjoy using NexPro PDF!
+                  Your Complete PDF Solution for Professionals
+================================================================================

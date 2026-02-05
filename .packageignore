@@ -1,0 +1,48 @@
+# Files and folders to exclude from distribution package
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+
+# Logs (exclude existing logs, but keep logs folder structure)
+logs/*.log
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Package creation
+CREATE_PACKAGE.bat
+.packageignore
+
+# Development files
+TODO.md
+DEVELOPMENT.md
+*.bak
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Data (keep structure but exclude user data)
+data/*.db
+data/*.json

@@ -1,0 +1,94 @@
+NEXPRO PDF SOFTWARE LICENSE AGREEMENT
+
+Copyright © 2024 NexPro Technologies. All Rights Reserved.
+
+IMPORTANT - READ CAREFULLY: This License Agreement ("Agreement") is a legal agreement between you (either an individual or a single entity) and NexPro Technologies ("Licensor") for the NexPro PDF software product, which includes computer software and may include associated media, printed materials, and online or electronic documentation ("Software").
+
+BY INSTALLING, COPYING, OR OTHERWISE USING THE SOFTWARE, YOU AGREE TO BE BOUND BY THE TERMS OF THIS AGREEMENT. IF YOU DO NOT AGREE TO THE TERMS OF THIS AGREEMENT, DO NOT INSTALL OR USE THE SOFTWARE.
+
+1. GRANT OF LICENSE
+Subject to the terms and conditions of this Agreement and payment of applicable license fees, Licensor grants you a limited, non-exclusive, non-transferable license to:
+   a) Install and use the Software on a single computer
+   b) Make one copy of the Software for backup purposes only
+
+2. SUBSCRIPTION MODEL
+   a) The Software is licensed on an annual subscription basis
+   b) License keys are bound to specific hardware and are non-transferable
+   c) Valid subscription is required for continued use
+   d) A 7-day grace period is provided for offline validation
+
+3. RESTRICTIONS
+You may NOT:
+   a) Modify, translate, reverse engineer, decompile, disassemble, or create derivative works based on the Software
+   b) Remove or alter any copyright, trademark, or other proprietary notices
+   c) Transfer, sublicense, rent, lease, or lend the Software
+   d) Use the Software for any illegal purpose
+   e) Circumvent or disable any licensing, security, or technical protection mechanisms
+   f) Share your license key with others
+   g) Use the Software to create, process, or transmit malicious content
+
+4. DATA PRIVACY
+   a) The Software processes all documents locally on your computer
+   b) No document data is transmitted to external servers except:
+      - License validation requests (no document content transmitted)
+   c) Usage telemetry is collected only with explicit consent
+   d) The Software complies with the Digital Personal Data Protection Act, 2023 (India)
+
+5. INTELLECTUAL PROPERTY
+   a) The Software is licensed, not sold
+   b) Licensor retains all right, title, and interest in the Software
+   c) This Agreement does not grant you any rights to trademarks or service marks
+
+6. TERMINATION
+   a) This license is effective until terminated
+   b) Your rights terminate automatically without notice if you fail to comply with this Agreement
+   c) Upon termination, you must destroy all copies of the Software
+   d) Licensor may terminate this license if subscription fees are not paid
+
+7. DISCLAIMER OF WARRANTIES
+THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. LICENSOR DOES NOT WARRANT THAT THE SOFTWARE WILL MEET YOUR REQUIREMENTS OR THAT OPERATION WILL BE UNINTERRUPTED OR ERROR-FREE.
+
+8. LIMITATION OF LIABILITY
+IN NO EVENT SHALL LICENSOR BE LIABLE FOR ANY SPECIAL, INCIDENTAL, INDIRECT, OR CONSEQUENTIAL DAMAGES WHATSOEVER (INCLUDING, WITHOUT LIMITATION, DAMAGES FOR LOSS OF BUSINESS PROFITS, BUSINESS INTERRUPTION, LOSS OF BUSINESS INFORMATION, OR ANY OTHER PECUNIARY LOSS) ARISING OUT OF THE USE OF OR INABILITY TO USE THE SOFTWARE, EVEN IF LICENSOR HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+9. REDACTION DISCLAIMER
+   a) The redaction features are provided as a tool only
+   b) Users are solely responsible for verifying that redactions are complete and effective
+   c) Licensor is not liable for any disclosure of information due to incomplete or ineffective redaction
+   d) Users should independently verify that redacted information is completely removed
+
+10. DIGITAL SIGNATURE DISCLAIMER
+    a) Digital signature features are provided as a convenience
+    b) Users are responsible for compliance with applicable digital signature laws
+    c) Licensor makes no warranties regarding legal validity of signatures
+    d) Users must independently verify legal requirements in their jurisdiction
+
+11. COMPLIANCE
+    a) This Software complies with ISO 32000 (PDF Specification)
+    b) This Software is designed to comply with Indian IT Act, 2000
+    c) Users are responsible for their own regulatory compliance
+
+12. SUPPORT AND UPDATES
+    a) Technical support is provided as per subscription terms
+    b) Software updates are provided during active subscription period
+    c) Licensor reserves the right to modify or discontinue features
+
+13. EXPORT RESTRICTIONS
+You agree not to export or re-export the Software in violation of any applicable laws or regulations.
+
+14. GOVERNING LAW
+This Agreement shall be governed by the laws of India. Any disputes arising from this Agreement shall be subject to the exclusive jurisdiction of courts in [City], India.
+
+15. ENTIRE AGREEMENT
+This Agreement constitutes the entire agreement between you and Licensor concerning the Software and supersedes all prior agreements and understandings.
+
+16. AMENDMENTS
+Licensor reserves the right to modify this Agreement. Continued use of the Software after such modifications constitutes acceptance of the modified terms.
+
+CONTACT INFORMATION:
+NexPro Technologies
+Email: legal@nexpro.com
+Support: support@nexpro.com
+Website: www.nexpro.com
+
+BY USING THIS SOFTWARE, YOU ACKNOWLEDGE THAT YOU HAVE READ THIS AGREEMENT, UNDERSTAND IT, AND AGREE TO BE BOUND BY ITS TERMS AND CONDITIONS.
