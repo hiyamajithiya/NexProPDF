@@ -138,6 +138,147 @@ class PermissionsDialog(QDialog):
         }
 
 
+class EncryptDialog(QDialog):
+    """Dialog for encrypting PDF with passwords and permission control"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Encrypt PDF")
+        self.setModal(True)
+        self.setMinimumWidth(450)
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        # User password
+        user_group = QGroupBox("User Password (Required to Open)")
+        user_layout = QFormLayout()
+        self.user_password = QLineEdit()
+        self.user_password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.user_password_confirm = QLineEdit()
+        self.user_password_confirm.setEchoMode(QLineEdit.EchoMode.Password)
+        user_layout.addRow("Password:", self.user_password)
+        user_layout.addRow("Confirm:", self.user_password_confirm)
+        user_group.setLayout(user_layout)
+        layout.addWidget(user_group)
+
+        # Owner password
+        owner_group = QGroupBox("Owner Password (Controls Permissions)")
+        owner_layout = QFormLayout()
+        self.owner_password = QLineEdit()
+        self.owner_password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.owner_password_confirm = QLineEdit()
+        self.owner_password_confirm.setEchoMode(QLineEdit.EchoMode.Password)
+        owner_layout.addRow("Password:", self.owner_password)
+        owner_layout.addRow("Confirm:", self.owner_password_confirm)
+        owner_note = QLabel("Required to restrict permissions. Must differ from user password.")
+        owner_note.setStyleSheet("color: #888; font-size: 11px; padding: 2px 0px;")
+        owner_note.setWordWrap(True)
+        owner_layout.addRow(owner_note)
+        owner_group.setLayout(owner_layout)
+        layout.addWidget(owner_group)
+
+        # Permissions
+        perm_group = QGroupBox("Document Permissions (uncheck to restrict)")
+        perm_layout = QVBoxLayout()
+
+        self.allow_print = QCheckBox("Allow Printing")
+        self.allow_print.setChecked(True)
+        self.allow_copy = QCheckBox("Allow Content Copying")
+        self.allow_copy.setChecked(True)
+        self.allow_modify = QCheckBox("Allow Document Modification")
+        self.allow_modify.setChecked(True)
+        self.allow_annotate = QCheckBox("Allow Annotations")
+        self.allow_annotate.setChecked(True)
+
+        perm_layout.addWidget(self.allow_print)
+        perm_layout.addWidget(self.allow_copy)
+        perm_layout.addWidget(self.allow_modify)
+        perm_layout.addWidget(self.allow_annotate)
+
+        perm_group.setLayout(perm_layout)
+        layout.addWidget(perm_group)
+
+        # Encryption info
+        info = QLabel("Encryption: AES-256")
+        info.setStyleSheet("color: #666; font-style: italic; padding: 5px;")
+        layout.addWidget(info)
+
+        # Buttons
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok |
+            QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.validate_and_accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _has_restricted_permissions(self):
+        """Check if any permission checkbox is unchecked"""
+        return not (self.allow_print.isChecked() and
+                    self.allow_copy.isChecked() and
+                    self.allow_modify.isChecked() and
+                    self.allow_annotate.isChecked())
+
+    def validate_and_accept(self):
+        """Validate passwords match and owner password is set for restrictions"""
+        if not self.user_password.text():
+            QMessageBox.warning(self, "Error", "Please enter a user password")
+            return
+
+        if self.user_password.text() != self.user_password_confirm.text():
+            QMessageBox.warning(self, "Error", "User passwords do not match")
+            return
+
+        if self.owner_password.text() and self.owner_password.text() != self.owner_password_confirm.text():
+            QMessageBox.warning(self, "Error", "Owner passwords do not match")
+            return
+
+        # If permissions are restricted, owner password is required and must differ
+        if self._has_restricted_permissions():
+            if not self.owner_password.text():
+                QMessageBox.warning(
+                    self, "Owner Password Required",
+                    "You have restricted document permissions.\n\n"
+                    "An owner password is required for permission restrictions "
+                    "to be enforced. Please set an owner password different "
+                    "from the user password."
+                )
+                self.owner_password.setFocus()
+                return
+
+            if self.owner_password.text() == self.user_password.text():
+                QMessageBox.warning(
+                    self, "Passwords Must Differ",
+                    "The owner password must be different from the user password.\n\n"
+                    "If both passwords are the same, PDF readers will grant full "
+                    "access and permission restrictions will not be enforced."
+                )
+                self.owner_password.setFocus()
+                return
+
+        self.accept()
+
+    def get_settings(self) -> Dict:
+        """Get encrypt settings"""
+        import secrets
+        owner_pw = self.owner_password.text()
+        if not owner_pw:
+            # Generate a random owner password so it differs from user password
+            owner_pw = secrets.token_hex(16)
+        return {
+            'user_password': self.user_password.text(),
+            'owner_password': owner_pw,
+            'permissions': {
+                'print': self.allow_print.isChecked(),
+                'copy': self.allow_copy.isChecked(),
+                'modify': self.allow_modify.isChecked(),
+                'annotate': self.allow_annotate.isChecked()
+            }
+        }
+
+
 class WatermarkDialog(QDialog):
     """Dialog for adding watermark"""
 
@@ -857,18 +998,6 @@ class ExtractPagesDialog(QDialog):
         self.page_range.toggled.connect(lambda checked: self.to_page.setEnabled(checked))
         self.specific_pages.toggled.connect(lambda checked: self.pages_input.setEnabled(checked))
 
-        # Output file
-        output_layout = QHBoxLayout()
-        output_layout.addWidget(QLabel("Output File:"))
-        self.output_path = QLineEdit()
-        output_layout.addWidget(self.output_path)
-
-        browse_btn = QPushButton("Browse...")
-        browse_btn.clicked.connect(self._browse_output)
-        output_layout.addWidget(browse_btn)
-
-        layout.addLayout(output_layout)
-
         # Buttons
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok |
@@ -878,8 +1007,15 @@ class ExtractPagesDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-    def _browse_output(self):
-        """Browse for output file"""
+        self.output_file = None
+
+    def validate_and_accept(self):
+        """Validate inputs and ask for save location"""
+        if self.specific_pages.isChecked() and not self.pages_input.text():
+            QMessageBox.warning(self, "Error", "Please enter specific pages")
+            return
+
+        # Ask for save location
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Save Extracted Pages As",
@@ -887,19 +1023,9 @@ class ExtractPagesDialog(QDialog):
             "PDF Files (*.pdf)"
         )
         if file_path:
-            self.output_path.setText(file_path)
-
-    def validate_and_accept(self):
-        """Validate inputs"""
-        if not self.output_path.text():
-            QMessageBox.warning(self, "Error", "Please specify output file")
-            return
-
-        if self.specific_pages.isChecked() and not self.pages_input.text():
-            QMessageBox.warning(self, "Error", "Please enter specific pages")
-            return
-
-        self.accept()
+            self.output_file = file_path
+            self.accept()
+        # If user cancels save dialog, stay in extract dialog
 
     def get_settings(self) -> Dict:
         """Get extraction settings"""
@@ -920,7 +1046,7 @@ class ExtractPagesDialog(QDialog):
 
         return {
             'pages': pages,
-            'output_file': self.output_path.text()
+            'output_file': self.output_file
         }
 
 

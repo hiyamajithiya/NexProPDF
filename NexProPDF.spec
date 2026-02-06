@@ -9,11 +9,15 @@ a = Analysis(
     hiddenimports=[
         'pdf2docx', 'pdf2docx.converter', 'pdf2docx.page.Page', 'pdf2docx.page.Pages',
         'docx', 'docx.shared', 'docx.oxml', 'docx.oxml.ns', 'docx.document', 'docx.text.paragraph',
-        'docx.enum.text', 'docx.enum.style',
+        'docx.enum.text', 'docx.enum.style', 'docx.table', 'docx.text.run',
         'fontTools', 'fontTools.ttLib', 'fontTools.subset',
         'numpy', 'cv2', 'fire',
         'pytesseract', 'PIL', 'PIL.Image',
-        'PyKCS11', 'PyKCS11.LowLevel'
+        'PyKCS11', 'PyKCS11.LowLevel',
+        'endesive', 'endesive.pdf', 'endesive.pdf.cms', 'endesive.hsm', 'endesive.signer',
+        'asn1crypto', 'asn1crypto.core', 'asn1crypto.cms', 'asn1crypto.x509',
+        'asn1crypto.algos', 'asn1crypto.keys', 'asn1crypto.ocsp', 'asn1crypto.tsp',
+        'asn1crypto.pem', 'asn1crypto.util',
     ],
     hookspath=[],
     hooksconfig={},

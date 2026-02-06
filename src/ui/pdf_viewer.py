@@ -1240,6 +1240,48 @@ class PDFViewer(QWidget):
 
             # Open PDF with PyMuPDF
             self.pdf_document = fitz.open(file_path)
+
+            # Check if PDF is password protected
+            if self.pdf_document.needs_pass:
+                self.logger.info("PDF is password protected, prompting for password")
+                from PyQt6.QtWidgets import QInputDialog, QLineEdit
+                max_attempts = 3
+                authenticated = False
+
+                for attempt in range(max_attempts):
+                    password, ok = QInputDialog.getText(
+                        self,
+                        "Password Protected PDF",
+                        f"This PDF is password protected.\nEnter password to open:"
+                        + (f"\n(Attempt {attempt + 1} of {max_attempts})" if attempt > 0 else ""),
+                        QLineEdit.EchoMode.Password
+                    )
+
+                    if not ok:
+                        # User cancelled
+                        self.pdf_document.close()
+                        self.pdf_document = None
+                        raise Exception("Password entry cancelled by user")
+
+                    if self.pdf_document.authenticate(password):
+                        authenticated = True
+                        self.logger.info("PDF password authentication successful")
+                        break
+                    else:
+                        self.logger.warning(f"Incorrect password attempt {attempt + 1}")
+                        if attempt < max_attempts - 1:
+                            from PyQt6.QtWidgets import QMessageBox
+                            QMessageBox.warning(
+                                self,
+                                "Incorrect Password",
+                                f"The password is incorrect. {max_attempts - attempt - 1} attempt(s) remaining."
+                            )
+
+                if not authenticated:
+                    self.pdf_document.close()
+                    self.pdf_document = None
+                    raise Exception("Failed to authenticate PDF after 3 attempts")
+
             self.total_pages = len(self.pdf_document)
             self.current_page = 0
 

@@ -270,10 +270,15 @@ class PDFSecurity:
                 start_x = center_x - text_width / 2
                 start_y = center_y
 
-                # Create rotation matrix around center point
+                # Create rotation matrix for morph
                 pivot = fitz.Point(center_x, center_y)
-                mat = fitz.Matrix(1, 0, 0, 1, 0, 0)  # Identity matrix
-                mat = mat.prerotate(rotation, pivot)  # Apply rotation around pivot
+                import math
+                rad = math.radians(rotation)
+                rot_matrix = fitz.Matrix(
+                    math.cos(rad), math.sin(rad),
+                    -math.sin(rad), math.cos(rad),
+                    0, 0
+                )
 
                 # Insert watermark text with rotation using morph
                 rc = page.insert_text(
@@ -283,7 +288,7 @@ class PDFSecurity:
                     fontname="helv",
                     color=color,
                     opacity=opacity,
-                    morph=(pivot, fitz.Matrix(rotation))
+                    morph=(pivot, rot_matrix)
                 )
 
                 if rc < 0:

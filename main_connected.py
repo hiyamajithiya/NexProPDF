@@ -60,6 +60,14 @@ def main():
         window = ConnectedMainWindow(config, license_manager)
         window.showMaximized()  # Start maximized automatically
 
+        # Background check for updates (non-blocking)
+        try:
+            check_on_startup = config.get("updates", {}).get("check_on_startup", True)
+            if check_on_startup:
+                window.run_startup_update_check()
+        except Exception:
+            pass  # Never let update check prevent app from starting
+
         logger.info("NexPro PDF (Connected) started successfully")
 
         # Execute application

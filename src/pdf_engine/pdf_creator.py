@@ -135,7 +135,7 @@ class PDFCreator:
                     raise ImportError("Word COM failed")
 
             except ImportError:
-                # Fallback: Use docx2pdf if available
+                # Fallback 1: Use docx2pdf if available (also requires MS Word)
                 try:
                     from docx2pdf import convert
                     convert(word_file, output_file)
@@ -143,12 +143,21 @@ class PDFCreator:
                     self.last_error = None
                     return True
                 except ImportError:
-                    self.last_error = "Word to PDF conversion requires Microsoft Word to be installed.\n\nAlternatively, install the 'docx2pdf' Python package."
-                    self.logger.error("Neither win32com nor docx2pdf available for Word conversion")
-                    return False
+                    pass
                 except Exception as fallback_error:
-                    self.last_error = f"Failed to convert Word document using docx2pdf.\n\nError: {str(fallback_error)}"
-                    self.logger.error(f"docx2pdf conversion error: {fallback_error}")
+                    self.logger.warning(f"docx2pdf also failed: {fallback_error}")
+
+                # Fallback 2: Pure Python conversion using python-docx + PyMuPDF
+                try:
+                    return self._from_word_pure_python(word_file, output_file)
+                except Exception as pure_python_error:
+                    self.last_error = (
+                        f"Word to PDF conversion failed.\n\n"
+                        f"Microsoft Word is not installed on this system.\n"
+                        f"Pure-Python fallback also failed: {str(pure_python_error)}\n\n"
+                        f"Please install Microsoft Word for best results."
+                    )
+                    self.logger.error(f"Pure-python Word conversion error: {pure_python_error}")
                     return False
 
         except Exception as e:
@@ -156,6 +165,209 @@ class PDFCreator:
                 self.last_error = f"Unexpected error during Word to PDF conversion.\n\nError: {str(e)}"
             self.logger.error(f"Error creating PDF from Word: {e}")
             return False
+
+    def _from_word_pure_python(self, word_file: str, output_file: str) -> bool:
+        """
+        Convert Word document to PDF using pure Python (python-docx + PyMuPDF).
+        This is a fallback when Microsoft Word is not installed.
+        Preserves text content, basic formatting, and tables.
+        """
+        from docx import Document
+        from docx.shared import Pt, Inches, RGBColor, Emu
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+        self.logger.info("Using pure-Python Word to PDF conversion (MS Word not available)")
+
+        doc = Document(word_file)
+        pdf = fitz.open()
+
+        # A4 page dimensions in points
+        page_width = 595.28
+        page_height = 841.89
+        margin_left = 56.7  # ~2cm
+        margin_right = 56.7
+        margin_top = 56.7
+        margin_bottom = 56.7
+        usable_width = page_width - margin_left - margin_right
+
+        # Current position tracking
+        page = pdf.new_page(width=page_width, height=page_height)
+        y_pos = margin_top
+
+        def new_page():
+            nonlocal page, y_pos
+            page = pdf.new_page(width=page_width, height=page_height)
+            y_pos = margin_top
+
+        def check_space(needed):
+            nonlocal y_pos
+            if y_pos + needed > page_height - margin_bottom:
+                new_page()
+
+        def get_font_size(paragraph):
+            """Get font size from paragraph or its runs."""
+            for run in paragraph.runs:
+                if run.font.size:
+                    return run.font.size.pt
+            style = paragraph.style
+            if style and style.font and style.font.size:
+                return style.font.size.pt
+            return 11  # default
+
+        def get_alignment(paragraph):
+            """Map Word alignment to fitz alignment."""
+            align = paragraph.alignment
+            if align == WD_ALIGN_PARAGRAPH.CENTER:
+                return fitz.TEXT_ALIGN_CENTER
+            elif align == WD_ALIGN_PARAGRAPH.RIGHT:
+                return fitz.TEXT_ALIGN_RIGHT
+            elif align == WD_ALIGN_PARAGRAPH.JUSTIFY:
+                return fitz.TEXT_ALIGN_JUSTIFY
+            return fitz.TEXT_ALIGN_LEFT
+
+        def is_bold(paragraph):
+            """Check if paragraph is bold (heading-like)."""
+            if paragraph.style and paragraph.style.name.startswith('Heading'):
+                return True
+            for run in paragraph.runs:
+                if run.bold:
+                    return True
+            return False
+
+        # Process document elements
+        for element in doc.element.body:
+            tag = element.tag.split('}')[-1] if '}' in element.tag else element.tag
+
+            if tag == 'p':
+                # Find the paragraph object
+                para = None
+                for p in doc.paragraphs:
+                    if p._element is element:
+                        para = p
+                        break
+
+                if para is None:
+                    continue
+
+                text = para.text.strip()
+                if not text and not para.runs:
+                    # Empty paragraph - add spacing
+                    y_pos += 8
+                    continue
+
+                font_size = get_font_size(para)
+                bold = is_bold(para)
+                alignment = get_alignment(para)
+
+                # Adjust font size for headings
+                style_name = para.style.name if para.style else ''
+                if style_name.startswith('Heading 1'):
+                    font_size = max(font_size, 18)
+                    bold = True
+                elif style_name.startswith('Heading 2'):
+                    font_size = max(font_size, 15)
+                    bold = True
+                elif style_name.startswith('Heading 3'):
+                    font_size = max(font_size, 13)
+                    bold = True
+
+                # Estimate text height
+                fontname = "hebo" if bold else "helv"
+                # Use textbox to handle wrapping
+                line_height = font_size * 1.4
+                estimated_chars_per_line = max(1, int(usable_width / (font_size * 0.5)))
+                estimated_lines = max(1, (len(text) + estimated_chars_per_line - 1) // estimated_chars_per_line)
+                text_height = estimated_lines * line_height + 4
+
+                check_space(text_height)
+
+                text_rect = fitz.Rect(
+                    margin_left, y_pos,
+                    page_width - margin_right, y_pos + text_height + 20
+                )
+
+                # Get font color from first run
+                color = (0, 0, 0)
+                if para.runs and para.runs[0].font.color and para.runs[0].font.color.rgb:
+                    rgb = para.runs[0].font.color.rgb
+                    color = (rgb[0] / 255, rgb[1] / 255, rgb[2] / 255)
+
+                rc = page.insert_textbox(
+                    text_rect, text,
+                    fontsize=font_size, fontname=fontname,
+                    color=color, align=alignment
+                )
+
+                # Advance y position (rc is negative remaining space or positive overflow)
+                if rc < 0:
+                    # Text fit - actual height used is rect height + rc (rc is negative)
+                    actual_height = text_height + 20 + rc
+                    y_pos += max(actual_height, line_height) + 2
+                else:
+                    y_pos += text_height + 4
+
+            elif tag == 'tbl':
+                # Process table
+                tbl = None
+                for t in doc.tables:
+                    if t._element is element:
+                        tbl = t
+                        break
+
+                if tbl is None:
+                    continue
+
+                num_cols = len(tbl.columns)
+                if num_cols == 0:
+                    continue
+
+                col_width = usable_width / num_cols
+                row_height = 20
+
+                for row in tbl.rows:
+                    # Estimate row height
+                    max_text_len = 0
+                    for cell in row.cells:
+                        max_text_len = max(max_text_len, len(cell.text))
+                    chars_per_col = max(1, int(col_width / 6))
+                    est_lines = max(1, (max_text_len + chars_per_col - 1) // chars_per_col)
+                    row_height = max(20, est_lines * 14 + 6)
+
+                    check_space(row_height)
+
+                    for col_idx, cell in enumerate(row.cells):
+                        cell_x = margin_left + col_idx * col_width
+                        cell_rect = fitz.Rect(
+                            cell_x, y_pos,
+                            cell_x + col_width, y_pos + row_height
+                        )
+                        # Draw cell border
+                        page.draw_rect(cell_rect, color=(0.6, 0.6, 0.6), width=0.5)
+
+                        # Insert cell text
+                        text_rect = fitz.Rect(
+                            cell_x + 3, y_pos + 2,
+                            cell_x + col_width - 3, y_pos + row_height - 2
+                        )
+                        cell_text = cell.text.strip()
+                        if cell_text:
+                            page.insert_textbox(
+                                text_rect, cell_text,
+                                fontsize=9, fontname="helv",
+                                color=(0, 0, 0), align=fitz.TEXT_ALIGN_LEFT
+                            )
+
+                    y_pos += row_height
+
+                y_pos += 8  # Space after table
+
+        # Save PDF
+        pdf.save(output_file, garbage=4, deflate=True)
+        pdf.close()
+
+        self.logger.info(f"Created PDF from Word (pure-Python): {output_file}")
+        self.last_error = None
+        return True
 
     def from_excel(self, excel_file: str, output_file: str) -> bool:
         """

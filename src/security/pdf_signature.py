@@ -21,13 +21,23 @@ class PDFSignature:
             # ePass2003 (most common in India)
             r'C:\Windows\System32\eps2003csp11.dll',
             r'C:\Windows\SysWOW64\eps2003csp11.dll',
-            # WatchData ProxKey
+            # WatchData ProxKey - SignatureP11.dll is the primary PKCS#11 DLL
+            r'C:\Windows\System32\SignatureP11.dll',
+            r'C:\Windows\SysWOW64\SignatureP11.dll',
             r'C:\Windows\System32\wdpkcs.dll',
+            r'C:\Windows\SysWOW64\wdpkcs.dll',
             r'C:\Program Files\Watchdata\ProxKey\wdpkcs.dll',
+            r'C:\Program Files (x86)\Watchdata\ProxKey\wdpkcs.dll',
+            r'C:\Program Files\Watchdata\WD PROXKey\SignatureP11.dll',
+            r'C:\Program Files (x86)\Watchdata\WD PROXKey\SignatureP11.dll',
+            r'C:\Program Files\ProxKey\SignatureP11.dll',
+            r'C:\Program Files (x86)\ProxKey\SignatureP11.dll',
             # eMudhra
             r'C:\Windows\System32\emlogiN_PKCS11.dll',
+            r'C:\Windows\SysWOW64\emlogiN_PKCS11.dll',
             # Safenet/Gemalto
             r'C:\Windows\System32\eTPKCS11.dll',
+            r'C:\Windows\SysWOW64\eTPKCS11.dll',
             # Generic locations
             r'C:\Windows\System32\cryptoCertum3PKCS.dll',
         ],
@@ -67,6 +77,86 @@ class PDFSignature:
                 "to sign with .pfx or .p12 certificate files."
             )
 
+    def _discover_token_dlls(self) -> List[str]:
+        """
+        Dynamically discover PKCS#11 DLL paths beyond the static list.
+        Searches registry and common installation directories.
+        """
+        discovered = []
+
+        if sys.platform != 'win32':
+            return discovered
+
+        # Search common DLL names in System32
+        pkcs11_dll_names = [
+            'SignatureP11.dll', 'wdpkcs.dll', 'eps2003csp11.dll',
+            'eTPKCS11.dll', 'emlogiN_PKCS11.dll', 'cryptoCertum3PKCS.dll',
+        ]
+        for sys_dir in [r'C:\Windows\System32', r'C:\Windows\SysWOW64']:
+            for dll_name in pkcs11_dll_names:
+                full_path = os.path.join(sys_dir, dll_name)
+                if os.path.exists(full_path) and full_path not in discovered:
+                    discovered.append(full_path)
+
+        # Search common installation directories for ProxKey/Watchdata
+        search_dirs = [
+            r'C:\Program Files\Watchdata',
+            r'C:\Program Files (x86)\Watchdata',
+            r'C:\Program Files\ProxKey',
+            r'C:\Program Files (x86)\ProxKey',
+            r'C:\Program Files\WD PROXKey',
+            r'C:\Program Files (x86)\WD PROXKey',
+        ]
+        pkcs11_extensions = {'SignatureP11.dll', 'wdpkcs.dll'}
+
+        for search_dir in search_dirs:
+            if os.path.isdir(search_dir):
+                for root, dirs, files in os.walk(search_dir):
+                    for f in files:
+                        if f.lower() in {n.lower() for n in pkcs11_extensions}:
+                            full_path = os.path.join(root, f)
+                            if full_path not in discovered:
+                                discovered.append(full_path)
+
+        # Try reading Windows registry for ProxKey CSP info
+        try:
+            import winreg
+            # Check for ProxKey smart card entries
+            reg_paths = [
+                (winreg.HKEY_LOCAL_MACHINE,
+                 r'SOFTWARE\Microsoft\Cryptography\Calais\SmartCards'),
+                (winreg.HKEY_LOCAL_MACHINE,
+                 r'SOFTWARE\Wow6432Node\Microsoft\Cryptography\Calais\SmartCards'),
+            ]
+            for hive, reg_path in reg_paths:
+                try:
+                    key = winreg.OpenKey(hive, reg_path)
+                    num_subkeys = winreg.QueryInfoKey(key)[0]
+                    for i in range(num_subkeys):
+                        subkey_name = winreg.EnumKey(key, i)
+                        if 'prox' in subkey_name.lower() or 'watchdata' in subkey_name.lower():
+                            try:
+                                subkey = winreg.OpenKey(key, subkey_name)
+                                # Try to read the PKCS11 DLL path
+                                for val_name in ['Crypto Provider', 'PKCS11 Path', '80000001']:
+                                    try:
+                                        val, _ = winreg.QueryValueEx(subkey, val_name)
+                                        if val and val.endswith('.dll') and os.path.exists(val):
+                                            if val not in discovered:
+                                                discovered.append(val)
+                                    except FileNotFoundError:
+                                        pass
+                                winreg.CloseKey(subkey)
+                            except Exception:
+                                pass
+                    winreg.CloseKey(key)
+                except FileNotFoundError:
+                    pass
+        except Exception as e:
+            self.logger.debug(f"Registry search failed: {e}")
+
+        return discovered
+
     def detect_usb_tokens(self) -> List[Dict]:
         """
         Detect available USB tokens connected to the system.
@@ -81,7 +171,13 @@ class PDFSignature:
 
             # Get DLL paths for current platform
             if sys.platform == 'win32':
-                dll_paths = self.TOKEN_DLLS['windows']
+                dll_paths = list(self.TOKEN_DLLS['windows'])
+                # Add dynamically discovered DLLs
+                dynamic_dlls = self._discover_token_dlls()
+                for dll in dynamic_dlls:
+                    if dll not in dll_paths:
+                        dll_paths.append(dll)
+                self.logger.info(f"Searching {len(dll_paths)} PKCS#11 DLL paths")
             else:
                 dll_paths = self.TOKEN_DLLS['linux']
 
@@ -239,13 +335,14 @@ class PDFSignature:
 
     def sign_pdf_with_token(self, input_file: str, output_file: str,
                            dll_path: str, slot: int, pin: str,
+                           token_label: str = "",
                            cert_label: str = None,
                            reason: str = "Digitally Signed",
                            location: str = "India",
                            contact: str = "",
                            visible_signature: bool = True,
                            sig_page: int = 0,
-                           sig_rect: Tuple[float, float, float, float] = None) -> bool:
+                           sig_rect: Tuple[float, float, float, float] = None) -> Tuple[bool, str]:
         """
         Sign PDF using USB token (DSC).
 
@@ -255,6 +352,7 @@ class PDFSignature:
             dll_path: Path to PKCS#11 DLL
             slot: Token slot number
             pin: Token PIN
+            token_label: Token label (from detect_usb_tokens)
             cert_label: Certificate label to use (optional)
             reason: Reason for signing
             location: Signing location
@@ -264,183 +362,141 @@ class PDFSignature:
             sig_rect: Rectangle for visible signature (x0, y0, x1, y1)
 
         Returns:
-            True if successful
+            Tuple of (success: bool, message: str)
         """
         try:
-            # Try using endesive library (recommended for PDF signing)
             return self._sign_with_endesive(
                 input_file, output_file, dll_path, slot, pin,
-                cert_label, reason, location, contact,
+                token_label, cert_label, reason, location, contact,
                 visible_signature, sig_page, sig_rect
             )
-        except ImportError:
-            self.logger.warning("endesive not installed, trying alternative method")
-            # Fallback to basic signing
-            return self._sign_basic(
-                input_file, output_file, dll_path, slot, pin,
-                reason, location
+        except ImportError as e:
+            self.logger.warning(f"endesive not available: {e}")
+            return False, (
+                "Digital signature library (endesive) is not available.\n\n"
+                "Please install it with: pip install endesive\n\n"
+                "Without endesive, cryptographic PDF signing is not possible."
             )
         except Exception as e:
             self.logger.error(f"Error signing PDF with token: {e}")
-            return False
+            import traceback
+            self.logger.error(traceback.format_exc())
+            return False, f"Signing failed: {str(e)}"
 
     def _sign_with_endesive(self, input_file: str, output_file: str,
                            dll_path: str, slot: int, pin: str,
-                           cert_label: str, reason: str, location: str,
+                           token_label: str, cert_label: str,
+                           reason: str, location: str,
                            contact: str, visible_signature: bool,
-                           sig_page: int, sig_rect: Tuple) -> bool:
-        """Sign PDF using endesive library with USB token."""
-        try:
-            from endesive import pdf
-            from endesive.pdf import cms
-            import PyKCS11 as PK11
+                           sig_page: int, sig_rect: Tuple) -> Tuple[bool, str]:
+        """Sign PDF using endesive library with USB token (proper PKCS#11)."""
+        from endesive import pdf, hsm
+        from endesive.pdf import cms
+        import PyKCS11 as PK11
 
-            # Custom HSM class for token signing
-            class TokenSigner:
-                def __init__(self, dll_path, slot, pin):
-                    self.pkcs11 = PK11.PyKCS11Lib()
-                    self.pkcs11.load(dll_path)
-                    self.slot = slot
-                    self.pin = pin
-                    self.session = None
+        # Get the token label for HSM login
+        if not token_label:
+            try:
+                pkcs11 = PK11.PyKCS11Lib()
+                pkcs11.load(dll_path)
+                slots = pkcs11.getSlotList(tokenPresent=True)
+                for s in slots:
+                    info = pkcs11.getTokenInfo(s)
+                    token_label = info.label.strip()
+                    break
+            except Exception as e:
+                self.logger.warning(f"Could not get token label: {e}")
+                token_label = ""
 
-                def login(self):
-                    self.session = self.pkcs11.openSession(
-                        self.slot,
-                        PK11.CKF_SERIAL_SESSION | PK11.CKF_RW_SESSION
+        # Create proper HSM signer class that extends endesive's HSM
+        _pin = pin
+        _logger = self.logger
+
+        class TokenSigner(hsm.HSM):
+            def certificate(self):
+                self.login(token_label, _pin)
+                try:
+                    pk11objects = self.session.findObjects(
+                        [(PK11.CKA_CLASS, PK11.CKO_CERTIFICATE)]
                     )
-                    self.session.login(self.pin)
-
-                def logout(self):
-                    if self.session:
+                    for pk11object in pk11objects:
                         try:
-                            self.session.logout()
-                        except:
-                            pass
-                        self.session.closeSession()
-
-                def get_certificate(self):
-                    self.login()
-                    try:
-                        certs = self.session.findObjects([
-                            (PK11.CKA_CLASS, PK11.CKO_CERTIFICATE)
-                        ])
-                        if certs:
-                            attrs = self.session.getAttributeValue(
-                                certs[0], [PK11.CKA_VALUE, PK11.CKA_ID]
+                            attributes = self.session.getAttributeValue(
+                                pk11object, [PK11.CKA_VALUE, PK11.CKA_ID]
                             )
-                            return bytes(attrs[1]), bytes(attrs[0])
-                    finally:
-                        self.logout()
-                    return None, None
+                            cert = bytes(attributes[0])
+                            keyid = bytes(attributes[1])
+                            return keyid, cert
+                        except PK11.PyKCS11Error:
+                            continue
+                finally:
+                    self.logout()
+                return None, None
 
-                def sign(self, data, mech='SHA256'):
-                    self.login()
-                    try:
-                        priv_keys = self.session.findObjects([
-                            (PK11.CKA_CLASS, PK11.CKO_PRIVATE_KEY)
-                        ])
-                        if priv_keys:
-                            mech_type = getattr(PK11, f'CKM_{mech}_RSA_PKCS')
-                            sig = self.session.sign(
-                                priv_keys[0], data,
-                                PK11.Mechanism(mech_type, None)
-                            )
-                            return bytes(sig)
-                    finally:
-                        self.logout()
-                    return None
+            def sign(self, keyid, data, mech):
+                self.login(token_label, _pin)
+                try:
+                    privKey = self.session.findObjects(
+                        [(PK11.CKA_CLASS, PK11.CKO_PRIVATE_KEY)]
+                    )[0]
+                    mech_type = getattr(PK11, 'CKM_%s_RSA_PKCS' % mech.upper())
+                    sig = self.session.sign(
+                        privKey, data, PK11.Mechanism(mech_type, None)
+                    )
+                    return bytes(sig)
+                finally:
+                    self.logout()
 
-            # Prepare signature parameters
-            date = datetime.utcnow().strftime('%Y%m%d%H%M%S+00\'00\'')
+        # Create signer instance
+        signer = TokenSigner(dll_path)
 
-            dct = {
-                'sigflags': 3,
-                'sigpage': sig_page,
-                'contact': contact.encode() if contact else b'',
-                'location': location.encode() if location else b'India',
-                'signingdate': date.encode(),
-                'reason': reason.encode() if reason else b'Digitally Signed',
-            }
-
-            if visible_signature and sig_rect:
-                dct['signaturebox'] = sig_rect
-                dct['sigbutton'] = True
-
-            # Read input PDF
-            with open(input_file, 'rb') as f:
-                datau = f.read()
-
-            # Create signer and sign
-            signer = TokenSigner(dll_path, slot, pin)
-
-            # Get certificate
-            key_id, cert = signer.get_certificate()
-            if not cert:
-                self.logger.error("Could not get certificate from token")
-                return False
-
-            # Sign the PDF
-            datas = cms.sign(
-                datau, dct,
-                key_id, cert,
-                [],
-                'sha256',
-                signer
-            )
-
-            # Write signed PDF
-            with open(output_file, 'wb') as f:
-                f.write(datau)
-                f.write(datas)
-
-            self.logger.info(f"PDF signed successfully with USB token: {output_file}")
-            return True
-
-        except ImportError as e:
-            self.logger.error(f"Required library not installed: {e}")
-            self.logger.info("Install with: pip install endesive PyKCS11")
-            raise
-        except Exception as e:
-            self.logger.error(f"Error in endesive signing: {e}")
-            import traceback
-            self.logger.error(traceback.format_exc())
-            return False
-
-    def _sign_basic(self, input_file: str, output_file: str,
-                   dll_path: str, slot: int, pin: str,
-                   reason: str, location: str) -> bool:
-        """Basic signing fallback when endesive is not available."""
-        self.logger.warning("Basic signing: Adds visible signature but no cryptographic signature")
-        self.logger.warning("For cryptographic signing, install: pip install endesive PyKCS11")
-
+        # Get signer name from certificate
+        signer_name = "Digital Signature"
         try:
-            # Just add a visible signature annotation
-            pdf = fitz.open(input_file)
-            page = pdf[0]
-
-            # Get certificate info from token
-            certs = self.get_certificates_from_token(dll_path, slot, pin)
-            signer_name = certs[0]['subject'] if certs else "Unknown Signer"
-
-            # Add visible signature
-            rect = fitz.Rect(50, 50, 250, 120)
-            page.draw_rect(rect, color=(0, 0, 0), width=1)
-
-            page.insert_text((55, 70), "Digitally Signed by:", fontsize=10)
-            page.insert_text((55, 85), signer_name, fontsize=11, color=(0, 0, 0.8))
-            page.insert_text((55, 100), f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}", fontsize=9)
-            page.insert_text((55, 112), f"Reason: {reason}", fontsize=8)
-
-            pdf.save(output_file)
-            pdf.close()
-
-            self.logger.info(f"Added visible signature (non-cryptographic): {output_file}")
-            return True
-
+            keyid, cert_der = signer.certificate()
+            if cert_der:
+                cert_info = self._parse_certificate(cert_der)
+                signer_name = cert_info.get('subject', 'Digital Signature')
+                _logger.info(f"Signing with certificate: {signer_name}")
         except Exception as e:
-            self.logger.error(f"Error in basic signing: {e}")
-            return False
+            _logger.warning(f"Could not read certificate name: {e}")
+
+        # Prepare signature dictionary
+        date = datetime.utcnow().strftime('%Y%m%d%H%M%S+00\'00\'')
+        dct = {
+            'sigflags': 3,
+            'sigpage': sig_page,
+            'contact': contact.encode() if contact else b'',
+            'location': location.encode() if location else b'India',
+            'signingdate': date.encode(),
+            'reason': reason.encode() if reason else b'Digitally Signed',
+        }
+
+        if visible_signature and sig_rect:
+            dct['signaturebox'] = sig_rect
+            dct['signature'] = signer_name
+            dct['sigbutton'] = True
+
+        # Read input PDF
+        with open(input_file, 'rb') as f:
+            datau = f.read()
+
+        # Sign the PDF using endesive with proper HSM
+        datas = cms.sign(
+            datau, dct,
+            None, None,
+            [],
+            'sha256',
+            signer,
+        )
+
+        # Write signed PDF
+        with open(output_file, 'wb') as f:
+            f.write(datau)
+            f.write(datas)
+
+        self.logger.info(f"PDF signed successfully by {signer_name}: {output_file}")
+        return True, f"PDF signed successfully by: {signer_name}"
 
     def sign_pdf_with_pfx(self, input_file: str, output_file: str,
                           pfx_path: str, pfx_password: str,
@@ -451,8 +507,7 @@ class PDFSignature:
                           sig_page: int = 0,
                           sig_rect: Tuple[float, float, float, float] = None) -> Tuple[bool, str]:
         """
-        Sign PDF using a PFX/P12 certificate file (software certificate).
-        This method does NOT require PyKCS11.
+        Sign PDF using a PFX/P12 certificate file with endesive (real crypto signature).
 
         Args:
             input_file: Input PDF path
@@ -471,6 +526,7 @@ class PDFSignature:
         """
         try:
             from cryptography.hazmat.primitives.serialization import pkcs12
+            from cryptography.hazmat.backends import default_backend
             from cryptography import x509
 
             # Load the PFX file
@@ -480,11 +536,11 @@ class PDFSignature:
             # Parse the PFX
             password_bytes = pfx_password.encode() if pfx_password else None
             private_key, certificate, additional_certs = pkcs12.load_key_and_certificates(
-                pfx_data, password_bytes
+                pfx_data, password_bytes, default_backend()
             )
 
-            if not certificate:
-                return False, "No certificate found in PFX file"
+            if not certificate or not private_key:
+                return False, "No certificate or private key found in PFX file"
 
             # Get signer name from certificate
             signer_name = "Unknown"
@@ -494,62 +550,51 @@ class PDFSignature:
                     break
 
             # Check certificate validity
-            from datetime import datetime, timezone
-            now = datetime.now(timezone.utc)
+            from datetime import datetime as dt, timezone
+            now = dt.now(timezone.utc)
             if now < certificate.not_valid_before_utc or now > certificate.not_valid_after_utc:
-                return False, f"Certificate has expired or is not yet valid.\nValid from: {certificate.not_valid_before_utc}\nValid until: {certificate.not_valid_after_utc}"
+                return False, (
+                    f"Certificate has expired or is not yet valid.\n"
+                    f"Valid from: {certificate.not_valid_before_utc}\n"
+                    f"Valid until: {certificate.not_valid_after_utc}"
+                )
 
-            # For now, add a visible signature with certificate info
-            # Full cryptographic signing requires endesive
-            pdf = fitz.open(input_file)
-            page = pdf[sig_page] if sig_page < len(pdf) else pdf[0]
+            # Prepare signature dictionary
+            date = datetime.utcnow().strftime('%Y%m%d%H%M%S+00\'00\'')
+            dct = {
+                'sigflags': 3,
+                'sigpage': sig_page,
+                'contact': contact.encode() if contact else b'',
+                'location': location.encode() if location else b'India',
+                'signingdate': date.encode(),
+                'reason': reason.encode() if reason else b'Digitally Signed',
+            }
 
-            # Default signature rectangle
-            if not sig_rect:
-                sig_rect = (50, 50, 280, 130)
+            if visible_signature and sig_rect:
+                dct['signaturebox'] = sig_rect
+                dct['signature'] = signer_name
+                dct['sigbutton'] = True
 
-            rect = fitz.Rect(sig_rect)
+            # Read input PDF
+            with open(input_file, 'rb') as f:
+                datau = f.read()
 
-            if visible_signature:
-                # Draw signature box with professional appearance
-                # White background
-                shape = page.new_shape()
-                shape.draw_rect(rect)
-                shape.finish(color=(0.2, 0.4, 0.6), fill=(0.98, 0.98, 1), width=2)
-                shape.commit()
+            # Sign with endesive using PFX key and certificate
+            from endesive.pdf import cms
 
-                # Add signature text
-                y_offset = rect.y0 + 18
-                page.insert_text((rect.x0 + 10, y_offset), "Digitally Signed",
-                               fontsize=11, fontname="helv", color=(0, 0.3, 0.6))
+            datas = cms.sign(
+                datau, dct,
+                private_key, certificate,
+                additional_certs or [],
+                'sha256',
+            )
 
-                y_offset += 16
-                page.insert_text((rect.x0 + 10, y_offset), f"By: {signer_name}",
-                               fontsize=10, fontname="helv", color=(0, 0, 0))
+            # Write signed PDF
+            with open(output_file, 'wb') as f:
+                f.write(datau)
+                f.write(datas)
 
-                y_offset += 14
-                page.insert_text((rect.x0 + 10, y_offset),
-                               f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                               fontsize=9, fontname="helv", color=(0.3, 0.3, 0.3))
-
-                y_offset += 12
-                if reason:
-                    page.insert_text((rect.x0 + 10, y_offset), f"Reason: {reason}",
-                                   fontsize=8, fontname="helv", color=(0.3, 0.3, 0.3))
-                    y_offset += 12
-
-                if location:
-                    page.insert_text((rect.x0 + 10, y_offset), f"Location: {location}",
-                                   fontsize=8, fontname="helv", color=(0.3, 0.3, 0.3))
-
-                # Add a small checkmark icon
-                page.insert_text((rect.x1 - 25, rect.y0 + 20), "\u2713",
-                               fontsize=16, color=(0, 0.6, 0))
-
-            pdf.save(output_file)
-            pdf.close()
-
-            self.logger.info(f"PDF signed with software certificate: {output_file}")
+            self.logger.info(f"PDF signed with PFX certificate by {signer_name}: {output_file}")
             return True, f"PDF signed successfully by: {signer_name}"
 
         except FileNotFoundError:
@@ -558,6 +603,8 @@ class PDFSignature:
             if "password" in str(e).lower():
                 return False, "Incorrect certificate password"
             return False, f"Invalid certificate file: {str(e)}"
+        except ImportError as e:
+            return False, f"Required library not available: {str(e)}\nInstall with: pip install endesive"
         except Exception as e:
             self.logger.error(f"Error signing with PFX: {e}")
             import traceback

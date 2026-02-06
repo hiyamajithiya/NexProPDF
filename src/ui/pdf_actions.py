@@ -476,6 +476,51 @@ class PDFActions:
                     "Failed to set password"
                 )
 
+    def encrypt_pdf(self):
+        """Encrypt PDF with passwords and permission control"""
+        if not self.main_window.current_file:
+            QMessageBox.warning(
+                self.main_window,
+                "No PDF Open",
+                "Please open a PDF file first"
+            )
+            return
+
+        dialog = EncryptDialog(self.main_window)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            settings = dialog.get_settings()
+
+            output_file, _ = QFileDialog.getSaveFileName(
+                self.main_window,
+                "Save Encrypted PDF As",
+                "",
+                "PDF Files (*.pdf)"
+            )
+
+            if not output_file:
+                return
+
+            if self.pdf_security.encrypt_pdf(
+                self.main_window.current_file,
+                output_file,
+                settings['user_password'],
+                settings['owner_password'],
+                settings['permissions']
+            ):
+                QMessageBox.information(
+                    self.main_window,
+                    "Success",
+                    "PDF encrypted successfully with AES-256"
+                )
+                self.main_window.load_pdf(output_file)
+            else:
+                QMessageBox.critical(
+                    self.main_window,
+                    "Error",
+                    "Failed to encrypt PDF"
+                )
+
     def set_permissions(self):
         """Set document permissions"""
         if not self.main_window.current_file:
@@ -1723,15 +1768,35 @@ class PDFActions:
 
         # Visible signature
         from PyQt6.QtWidgets import QCheckBox
-        visible_check = QCheckBox("Add visible signature on first page")
+        visible_check = QCheckBox("Add visible signature on PDF")
         visible_check.setChecked(True)
         layout.addWidget(visible_check)
+
+        # Page selection
+        page_layout = QHBoxLayout()
+        page_label = QLabel("Signature Page:")
+        from PyQt6.QtWidgets import QSpinBox
+        page_spin = QSpinBox()
+        page_spin.setMinimum(1)
+        page_spin.setMaximum(self.main_window.pdf_viewer.total_pages or 1)
+        page_spin.setValue(self.main_window.pdf_viewer.current_page + 1)
+        page_layout.addWidget(page_label)
+        page_layout.addWidget(page_spin)
+        page_layout.addStretch()
+        layout.addLayout(page_layout)
+
+        # Info
+        info_label = QLabel(
+            "<i>After clicking 'Next', draw a rectangle on the PDF to place your signature.</i>"
+        )
+        info_label.setStyleSheet("color: #666; padding: 5px;")
+        layout.addWidget(info_label)
 
         layout.addSpacing(10)
 
         # Buttons
         btn_layout = QHBoxLayout()
-        sign_btn = QPushButton("Sign PDF")
+        sign_btn = QPushButton("Next - Place Signature")
         sign_btn.setStyleSheet("""
             QPushButton {
                 background-color: #4CAF50;
@@ -1768,6 +1833,22 @@ class PDFActions:
         if dialog.exec() != QDialog.DialogCode.Accepted or not result["proceed"]:
             return
 
+        visible = visible_check.isChecked()
+        sig_page = page_spin.value() - 1
+
+        # Navigate to signature page
+        if sig_page != self.main_window.pdf_viewer.current_page:
+            self.main_window.pdf_viewer.go_to_page(sig_page)
+            QApplication.processEvents()
+
+        # Let user draw signature placement
+        sig_rect = None
+        if visible:
+            sig_rect = self._get_signature_placement()
+            if sig_rect is None:
+                self.main_window.statusBar().showMessage("Signature cancelled", 3000)
+                return
+
         # Get output file
         output_file, _ = QFileDialog.getSaveFileName(
             self.main_window,
@@ -1783,8 +1864,6 @@ class PDFActions:
         self.main_window.statusBar().showMessage("Signing PDF...")
         QApplication.processEvents()
 
-        sig_rect = (50, 50, 280, 130) if visible_check.isChecked() else None
-
         success, message = self.pdf_signature.sign_pdf_with_pfx(
             self.main_window.current_file,
             output_file,
@@ -1792,8 +1871,8 @@ class PDFActions:
             password_input.text(),
             reason=reason_input.text() or "Digitally Signed",
             location=location_input.text() or "India",
-            visible_signature=visible_check.isChecked(),
-            sig_page=0,
+            visible_signature=visible,
+            sig_page=sig_page,
             sig_rect=sig_rect
         )
 
@@ -1822,7 +1901,6 @@ class PDFActions:
         tokens = self.pdf_signature.detect_usb_tokens()
 
         if not tokens:
-            # Show instructions for USB token
             msg = QMessageBox(self.main_window)
             msg.setIcon(QMessageBox.Icon.Warning)
             msg.setWindowTitle("No USB Token Detected")
@@ -1889,21 +1967,35 @@ class PDFActions:
 
         # Visible signature option
         from PyQt6.QtWidgets import QCheckBox
-        visible_check = QCheckBox("Add visible signature on first page")
+        visible_check = QCheckBox("Add visible signature on PDF")
         visible_check.setChecked(True)
         layout.addWidget(visible_check)
 
+        # Page selection for signature
+        page_layout = QHBoxLayout()
+        page_label = QLabel("Signature Page:")
+        from PyQt6.QtWidgets import QSpinBox
+        page_spin = QSpinBox()
+        page_spin.setMinimum(1)
+        page_spin.setMaximum(self.main_window.pdf_viewer.total_pages or 1)
+        page_spin.setValue(self.main_window.pdf_viewer.current_page + 1)
+        page_layout.addWidget(page_label)
+        page_layout.addWidget(page_spin)
+        page_layout.addStretch()
+        layout.addLayout(page_layout)
+
         # Info label
         info_label = QLabel(
-            "<i>Note: Your private key never leaves the USB token.<br>"
-            "The signing happens securely inside the token.</i>"
+            "<i>Note: After clicking 'Next', you can draw a rectangle on the PDF<br>"
+            "to place your visible signature (like Adobe Acrobat).<br>"
+            "Your private key never leaves the USB token.</i>"
         )
         info_label.setStyleSheet("color: #666; padding: 10px;")
         layout.addWidget(info_label)
 
         # Buttons
         btn_layout = QHBoxLayout()
-        sign_btn = QPushButton("Sign PDF")
+        sign_btn = QPushButton("Next - Place Signature")
         sign_btn.setStyleSheet("""
             QPushButton {
                 background-color: #4CAF50;
@@ -1945,6 +2037,20 @@ class PDFActions:
         reason = reason_input.text() or "Digitally Signed"
         location = location_input.text() or "India"
         visible = visible_check.isChecked()
+        sig_page = page_spin.value() - 1  # 0-indexed
+
+        # Navigate to the signature page
+        if sig_page != self.main_window.pdf_viewer.current_page:
+            self.main_window.pdf_viewer.go_to_page(sig_page)
+            QApplication.processEvents()
+
+        # Let user draw signature placement rectangle
+        sig_rect = None
+        if visible:
+            sig_rect = self._get_signature_placement()
+            if sig_rect is None:
+                self.main_window.statusBar().showMessage("Signature cancelled", 3000)
+                return
 
         # Select output file
         output_file, _ = QFileDialog.getSaveFileName(
@@ -1962,18 +2068,17 @@ class PDFActions:
         QApplication.processEvents()
 
         # Sign the PDF
-        sig_rect = (50, 50, 250, 120) if visible else None
-
-        success = self.pdf_signature.sign_pdf_with_token(
+        success, message = self.pdf_signature.sign_pdf_with_token(
             self.main_window.current_file,
             output_file,
             selected_token['dll_path'],
             selected_token['slot'],
             pin,
+            token_label=selected_token['label'],
             reason=reason,
             location=location,
             visible_signature=visible,
-            sig_page=0,
+            sig_page=sig_page,
             sig_rect=sig_rect
         )
 
@@ -1982,9 +2087,7 @@ class PDFActions:
             QMessageBox.information(
                 self.main_window,
                 "Success",
-                f"PDF signed successfully with USB Token!\n\n"
-                f"Token: {selected_token['label']}\n"
-                f"Output: {output_file}"
+                f"{message}\n\nToken: {selected_token['label']}\nOutput: {output_file}"
             )
             self.main_window.load_pdf(output_file)
         else:
@@ -1992,14 +2095,60 @@ class PDFActions:
             QMessageBox.critical(
                 self.main_window,
                 "Signing Failed",
-                "Failed to sign PDF.\n\n"
-                "Possible causes:\n"
-                "• Incorrect PIN\n"
-                "• Token disconnected\n"
-                "• Certificate expired\n"
-                "• Missing libraries (PyKCS11, endesive)\n\n"
-                "Check the logs for details."
+                f"Failed to sign PDF.\n\n{message}"
             )
+
+    def _get_signature_placement(self):
+        """Let user draw a rectangle on PDF to place signature. Returns (x0, y0, x1, y1) or None."""
+        from PyQt6.QtCore import QEventLoop
+
+        # Show instruction
+        self.main_window.statusBar().showMessage(
+            "Draw a rectangle on the PDF where you want to place your signature. "
+            "Press Escape to cancel."
+        )
+
+        # Enable selection mode on the PDF viewer
+        viewer = self.main_window.pdf_viewer
+        pdf_label = viewer.pdf_label
+        pdf_label.set_selection_mode(True, 'signature')
+
+        # Wait for selection
+        result = {"rect": None, "cancelled": False}
+        loop = QEventLoop()
+
+        def on_area_selected(x0, y0, x1, y1):
+            result["rect"] = (x0, y0, x1, y1)
+            loop.quit()
+
+        def on_key_press(event):
+            if event.key() == Qt.Key.Key_Escape:
+                result["cancelled"] = True
+                loop.quit()
+
+        # Connect signals
+        viewer.area_selected.connect(on_area_selected)
+        original_key_handler = viewer.keyPressEvent
+        viewer.keyPressEvent = on_key_press
+
+        # Run event loop until selection or cancel
+        loop.exec()
+
+        # Cleanup
+        try:
+            viewer.area_selected.disconnect(on_area_selected)
+        except:
+            pass
+        viewer.keyPressEvent = original_key_handler
+        pdf_label.set_selection_mode(False)
+        pdf_label.clear_selection()
+
+        self.main_window.statusBar().showMessage("Ready")
+
+        if result["cancelled"] or result["rect"] is None:
+            return None
+
+        return result["rect"]
 
     def verify_signature(self):
         """Verify signatures in PDF"""
@@ -2371,8 +2520,8 @@ class PDFActions:
 
         # Quality note (dynamic)
         note_label = QLabel(
-            "💡 <b>Tip:</b> Light/Medium compression preserves text selectability. "
-            "High/Maximum converts pages to images for smaller size."
+            "💡 <b>Tip:</b> Images in the PDF are re-encoded at lower quality. "
+            "Text remains selectable up to 85%. Maximum (90%+) converts pages to images."
         )
         note_label.setWordWrap(True)
         note_label.setStyleSheet("padding: 10px; background-color: #E3F2FD; border-radius: 5px; color: #1565C0;")
@@ -2380,7 +2529,7 @@ class PDFActions:
 
         # Warning label for high compression
         warning_label = QLabel(
-            "⚠️ <b>Warning:</b> High compression (70%+) will convert pages to images. "
+            "⚠️ <b>Warning:</b> Maximum compression (90%+) will convert pages to images. "
             "Text will NOT be selectable/searchable. Use for archival only."
         )
         warning_label.setWordWrap(True)
@@ -2427,16 +2576,17 @@ class PDFActions:
         def update_display(value):
             compression_value_label.setText(f"{value}%")
 
-            # Estimate compressed size based on compression level
-            # Higher compression = more reduction
+            # Estimate - actual results depend on image content in the PDF
             if value <= 30:
-                reduction_factor = 0.15 + (value / 100) * 0.2  # 15-21% reduction
+                reduction_factor = 0.20 + (value / 100) * 0.3    # 20-29%
             elif value <= 50:
-                reduction_factor = 0.25 + ((value - 30) / 20) * 0.2  # 25-45% reduction
+                reduction_factor = 0.30 + ((value - 30) / 20) * 0.25  # 30-55%
             elif value <= 70:
-                reduction_factor = 0.45 + ((value - 50) / 20) * 0.2  # 45-65% reduction
+                reduction_factor = 0.55 + ((value - 50) / 20) * 0.2   # 55-75%
+            elif value <= 85:
+                reduction_factor = 0.70 + ((value - 70) / 15) * 0.1   # 70-80%
             else:
-                reduction_factor = 0.65 + ((value - 70) / 25) * 0.2  # 65-85% reduction
+                reduction_factor = 0.80 + ((value - 85) / 10) * 0.1   # 80-90%
 
             estimated = original_size * (1 - reduction_factor)
             estimated_size_label.setText(f"~{estimated / 1024:.0f} KB")
@@ -2454,8 +2604,8 @@ class PDFActions:
 
             compression_value_label.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {color};")
 
-            # Show warning for high compression
-            warning_label.setVisible(value > 70)
+            # Show warning only for page-to-image conversion threshold
+            warning_label.setVisible(value >= 90)
 
         def set_preset(value):
             compression_slider.setValue(value)
@@ -2484,24 +2634,26 @@ class PDFActions:
 
         compression_level = result["compression"]
 
-        # Map compression level to quality and max size
-        # quality >= 40: Safe compression (preserves text selectability)
-        # quality < 40: Converts pages to images (maximum compression but loses text)
+        # Map slider % to JPEG quality and max image dimension.
+        # All levels up to 85% re-encode images in-place (text preserved).
+        # 90%+ converts entire pages to images (maximum compression, loses text).
+        convert_to_images = False
         if compression_level <= 30:
-            quality = 80  # Light: Safe, preserves everything
-            max_size = 2000
+            quality = 80   # Light: mild re-encoding
+            max_size = 2400
         elif compression_level <= 50:
-            quality = 60  # Medium: Safe, good compression
-            max_size = 1600
+            quality = 55   # Medium: noticeable reduction
+            max_size = 1800
         elif compression_level <= 70:
-            quality = 45  # High: Safe, more compression
-            max_size = 1200
+            quality = 35   # High: strong re-encoding + downscale
+            max_size = 1400
         elif compression_level <= 85:
-            quality = 30  # Very High: Converts to images
+            quality = 20   # Very High: aggressive re-encoding + downscale
             max_size = 1000
-        else:  # Maximum compression
-            quality = 20  # Maximum: Converts to images, smallest size
+        else:  # 90-95%: Maximum compression
+            quality = 15   # Maximum: converts pages to images
             max_size = 800
+            convert_to_images = True
 
         output_file, _ = QFileDialog.getSaveFileName(
             self.main_window,
@@ -2529,7 +2681,8 @@ class PDFActions:
         if self.pdf_utilities.compress_pdf(
             input_file, output_file,
             image_quality=quality,
-            max_image_size=max_size
+            max_image_size=max_size,
+            convert_to_images=convert_to_images,
         ):
             progress.setValue(90)
             QApplication.processEvents()
@@ -2746,54 +2899,69 @@ class PDFActions:
             return
 
         import fitz
-        pdf_doc = fitz.open(self.main_window.current_file)
+
+        # Use the viewer's document to read current bookmarks
+        viewer_doc = self.main_window.pdf_viewer.pdf_document
+        if not viewer_doc:
+            QMessageBox.warning(self.main_window, "Error", "No PDF document loaded")
+            return
 
         # Get current bookmarks
         current_bookmarks = []
         try:
-            toc = pdf_doc.get_toc()
+            toc = viewer_doc.get_toc()
             for item in toc:
                 level, title, page = item
                 current_bookmarks.append({'title': title, 'page': page - 1})
         except:
             pass
 
+        # Also pass total pages so the dialog can validate page numbers
+        total_pages = len(viewer_doc)
+
         from src.ui.dialogs import BookmarkDialog
         dialog = BookmarkDialog(self.main_window, current_bookmarks)
+        # Set page range limit
+        dialog.bookmark_page.setRange(1, total_pages)
 
         if dialog.exec() == QDialog.DialogCode.Accepted:
             bookmarks = dialog.get_bookmarks()
 
-            # Clear existing bookmarks and add new ones
-            pdf_doc.set_toc([])
-
+            # Build new TOC
             toc = []
             for bookmark in bookmarks:
                 # Format: [level, title, page_number]
                 toc.append([1, bookmark['title'], bookmark['page'] + 1])
 
-            pdf_doc.set_toc(toc)
+            try:
+                # Set the TOC on the viewer's document
+                viewer_doc.set_toc(toc)
 
-            output_file, _ = QFileDialog.getSaveFileName(
-                self.main_window,
-                "Save PDF As",
-                "",
-                "PDF Files (*.pdf)"
-            )
+                # Save directly to the current file using temp file approach
+                import tempfile, shutil, os
+                temp_fd, temp_path = tempfile.mkstemp(suffix='.pdf')
+                os.close(temp_fd)
 
-            if output_file:
-                pdf_doc.save(output_file)
-                pdf_doc.close()
+                viewer_doc.save(temp_path, garbage=4, deflate=True)
+                viewer_doc.close()
+
+                current_file = self.main_window.current_file
+                shutil.move(temp_path, current_file)
+
+                # Reload the PDF
+                self.main_window.load_pdf(current_file)
+
                 QMessageBox.information(
                     self.main_window,
                     "Success",
-                    f"Bookmarks updated successfully"
+                    f"Bookmarks updated successfully ({len(bookmarks)} bookmarks)"
                 )
-                self.main_window.load_pdf(output_file)
-            else:
-                pdf_doc.close()
-        else:
-            pdf_doc.close()
+            except Exception as e:
+                QMessageBox.critical(
+                    self.main_window,
+                    "Error",
+                    f"Failed to save bookmarks: {str(e)}"
+                )
 
     def edit_metadata(self):
         """Edit PDF metadata"""
@@ -3167,8 +3335,8 @@ class PDFActions:
                         )
                         pdf_doc.close()
                     elif operation == "Compress Files":
-                        self.pdf_utilities.compress_pdf(pdf_doc, str(output_file))
                         pdf_doc.close()
+                        self.pdf_utilities.compress_pdf(file_path, str(output_file), image_quality=50, max_image_size=1400)
                     elif operation == "Convert to PDF/A":
                         pdf_doc.close()
                         self.pdf_creator.convert_to_pdfa(file_path, str(output_file))

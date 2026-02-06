@@ -505,20 +505,22 @@ class PDFUtilities:
             return False
 
     def compress_pdf(self, input_file: str, output_file: str,
-                    image_quality: int = 50, max_image_size: int = 1200) -> bool:
+                    image_quality: int = 50, max_image_size: int = 1200,
+                    convert_to_images: bool = False) -> bool:
         """
-        Compress PDF to reduce file size safely without losing content.
+        Compress PDF by re-encoding embedded images at lower quality.
 
-        This method uses PyMuPDF's safe compression features:
-        - Removes unused objects (garbage collection)
-        - Compresses streams with deflate
-        - Optionally compresses images by re-encoding them
+        Preserves text selectability and structure while significantly reducing
+        file size by re-encoding images with JPEG compression and downscaling
+        oversized images.
 
         Args:
             input_file: Input PDF path
             output_file: Output PDF path
-            image_quality: JPEG quality for images (0-100, lower = smaller file)
-            max_image_size: Maximum dimension for images (width or height)
+            image_quality: JPEG quality for images (1-100, lower = smaller)
+            max_image_size: Maximum pixel dimension for images
+            convert_to_images: If True, convert entire pages to images (maximum
+                compression but loses text selectability)
 
         Returns:
             True if successful
@@ -527,83 +529,15 @@ class PDFUtilities:
             import os
             from PIL import Image
             import io
-            import tempfile
 
-            # Open the PDF
             pdf = fitz.open(input_file)
             original_size = os.path.getsize(input_file)
 
-            # For aggressive compression (quality < 40), we need to recompress images
-            # We do this by extracting each page as an image and rebuilding
-            if image_quality < 40:
-                # Create a temporary PDF with page images
-                temp_pdf = fitz.open()
-
-                for page_num in range(len(pdf)):
-                    page = pdf[page_num]
-                    page_rect = page.rect
-
-                    # Determine zoom/DPI based on quality
-                    if image_quality >= 30:
-                        zoom = 1.5  # ~108 DPI - good balance
-                    elif image_quality >= 20:
-                        zoom = 1.2  # ~86 DPI
-                    else:
-                        zoom = 1.0  # 72 DPI - minimum for readability
-
-                    # Render page to image
-                    mat = fitz.Matrix(zoom, zoom)
-                    pix = page.get_pixmap(matrix=mat, alpha=False)
-
-                    # Convert to PIL Image
-                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-
-                    # Apply max size limit if specified
-                    max_dim = max(img.width, img.height)
-                    target_max = max_image_size * zoom if max_image_size else max_dim
-                    if max_dim > target_max:
-                        ratio = target_max / max_dim
-                        new_size = (int(img.width * ratio), int(img.height * ratio))
-                        img = img.resize(new_size, Image.Resampling.LANCZOS)
-
-                    # Compress to JPEG with specified quality
-                    img_buffer = io.BytesIO()
-                    jpeg_qual = max(15, image_quality)  # Min 15 to keep readable
-                    img.save(img_buffer, format='JPEG', quality=jpeg_qual, optimize=True)
-                    img_data = img_buffer.getvalue()
-
-                    # Create new page and insert compressed image
-                    new_page = temp_pdf.new_page(width=page_rect.width, height=page_rect.height)
-                    new_page.insert_image(page_rect, stream=img_data)
-
-                pdf.close()
-
-                # Save with maximum compression
-                temp_pdf.save(
-                    output_file,
-                    garbage=4,
-                    deflate=True,
-                    deflate_images=True,
-                    clean=True,
-                )
-                temp_pdf.close()
-
+            if convert_to_images:
+                self._compress_as_images(pdf, output_file, image_quality, max_image_size)
             else:
-                # For moderate/light compression, preserve text and structure
-                # Just use PyMuPDF's built-in compression which is safe
+                self._compress_reencoding(pdf, output_file, image_quality, max_image_size)
 
-                # Save with compression options - this is SAFE and preserves all content
-                pdf.save(
-                    output_file,
-                    garbage=4,  # Maximum garbage collection - removes unused objects
-                    deflate=True,  # Compress all streams with zlib
-                    deflate_images=True,  # Compress image streams
-                    deflate_fonts=True,  # Compress embedded fonts
-                    clean=True,  # Clean and optimize structure
-                )
-                pdf.close()
-
-            # Calculate and log compression results
             compressed_size = os.path.getsize(output_file)
             reduction = original_size - compressed_size
             ratio = (reduction / original_size) * 100 if original_size > 0 else 0
@@ -612,7 +546,6 @@ class PDFUtilities:
                 f"PDF Compression: {original_size:,} bytes -> {compressed_size:,} bytes "
                 f"({ratio:.1f}% reduction, saved {reduction:,} bytes)"
             )
-
             return True
 
         except Exception as e:
@@ -620,3 +553,141 @@ class PDFUtilities:
             import traceback
             self.logger.error(traceback.format_exc())
             return False
+
+    def _compress_reencoding(self, pdf, output_file: str,
+                             image_quality: int, max_image_size: int):
+        """Re-encode embedded images in-place, preserving text and structure."""
+        from PIL import Image
+        import io
+
+        processed_xrefs = set()
+
+        for page_num in range(len(pdf)):
+            page = pdf[page_num]
+            images = page.get_images(full=True)
+
+            for img_info in images:
+                xref = img_info[0]
+                if xref in processed_xrefs:
+                    continue
+                processed_xrefs.add(xref)
+
+                try:
+                    base = pdf.extract_image(xref)
+                    if not base or not base.get("image"):
+                        continue
+
+                    image_bytes = base["image"]
+                    img_w = base.get("width", 0)
+                    img_h = base.get("height", 0)
+
+                    # Skip very small images (icons, logos) - not worth recompressing
+                    if img_w * img_h < 2500 or len(image_bytes) < 5000:
+                        continue
+
+                    pil_img = Image.open(io.BytesIO(image_bytes))
+
+                    # Convert palette/indexed/CMYK/RGBA to RGB for JPEG
+                    if pil_img.mode in ('P', 'PA'):
+                        pil_img = pil_img.convert('RGBA').convert('RGB')
+                    elif pil_img.mode == 'CMYK':
+                        pil_img = pil_img.convert('RGB')
+                    elif pil_img.mode == 'RGBA' or pil_img.mode == 'LA':
+                        # Flatten alpha onto white background
+                        bg = Image.new('RGB', pil_img.size, (255, 255, 255))
+                        bg.paste(pil_img, mask=pil_img.split()[-1])
+                        pil_img = bg
+                    elif pil_img.mode == 'L':
+                        pil_img = pil_img.convert('RGB')
+                    elif pil_img.mode != 'RGB':
+                        pil_img = pil_img.convert('RGB')
+
+                    # Downscale oversized images
+                    max_dim = max(pil_img.width, pil_img.height)
+                    if max_dim > max_image_size:
+                        ratio = max_image_size / max_dim
+                        new_w = max(1, int(pil_img.width * ratio))
+                        new_h = max(1, int(pil_img.height * ratio))
+                        pil_img = pil_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+                    # Re-encode as JPEG
+                    buf = io.BytesIO()
+                    jpeg_q = max(10, min(95, image_quality))
+                    pil_img.save(buf, format='JPEG', quality=jpeg_q, optimize=True)
+                    new_data = buf.getvalue()
+
+                    # Only replace if actually smaller
+                    if len(new_data) < len(image_bytes):
+                        pdf.update_stream(xref, new_data)
+                        pdf.xref_set_key(xref, "Filter", "/DCTDecode")
+                        pdf.xref_set_key(xref, "ColorSpace", "/DeviceRGB")
+                        pdf.xref_set_key(xref, "BitsPerComponent", "8")
+                        pdf.xref_set_key(xref, "Width", str(pil_img.width))
+                        pdf.xref_set_key(xref, "Height", str(pil_img.height))
+                        pdf.xref_set_key(xref, "DecodeParms", "null")
+
+                        # Clear soft mask if image was flattened to RGB
+                        smask_xref = img_info[1]
+                        if smask_xref > 0:
+                            try:
+                                pdf.xref_set_key(xref, "SMask", "null")
+                            except Exception:
+                                pass
+
+                except Exception as e:
+                    self.logger.debug(f"Skipping image xref {xref}: {e}")
+                    continue
+
+        pdf.save(
+            output_file,
+            garbage=4,
+            deflate=True,
+            deflate_images=True,
+            deflate_fonts=True,
+            clean=True,
+        )
+        pdf.close()
+
+    def _compress_as_images(self, pdf, output_file: str,
+                            image_quality: int, max_image_size: int):
+        """Convert entire pages to images for maximum compression (loses text)."""
+        from PIL import Image
+        import io
+
+        temp_pdf = fitz.open()
+
+        for page_num in range(len(pdf)):
+            page = pdf[page_num]
+            page_rect = page.rect
+
+            # DPI based on quality
+            if image_quality >= 30:
+                zoom = 1.5   # ~108 DPI
+            elif image_quality >= 20:
+                zoom = 1.2   # ~86 DPI
+            else:
+                zoom = 1.0   # 72 DPI
+
+            mat = fitz.Matrix(zoom, zoom)
+            pix = page.get_pixmap(matrix=mat, alpha=False)
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+
+            # Downscale if exceeds max
+            max_dim = max(img.width, img.height)
+            target_max = int(max_image_size * zoom)
+            if max_dim > target_max:
+                ratio = target_max / max_dim
+                img = img.resize(
+                    (max(1, int(img.width * ratio)), max(1, int(img.height * ratio))),
+                    Image.Resampling.LANCZOS
+                )
+
+            buf = io.BytesIO()
+            img.save(buf, format='JPEG', quality=max(15, image_quality), optimize=True)
+
+            new_page = temp_pdf.new_page(width=page_rect.width, height=page_rect.height)
+            new_page.insert_image(page_rect, stream=buf.getvalue())
+
+        pdf.close()
+        temp_pdf.save(output_file, garbage=4, deflate=True, deflate_images=True, clean=True)
+        temp_pdf.close()

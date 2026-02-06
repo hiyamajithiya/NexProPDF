@@ -5,6 +5,7 @@
 #define MyAppName "NexPro PDF"
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "CTPL"
+#define MyAppURL "https://www.ctpl.com"
 #define MyAppExeName "NexProPDF.exe"
 #define MyAppAssocName "PDF Document"
 #define MyAppAssocExt ".pdf"
@@ -15,10 +16,19 @@
 AppId={{8F6B3E7A-5D4C-4B2A-9E1F-0A8B7C6D5E4F}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-AppPublisherURL=https://www.ctpl.com
-AppSupportURL=https://www.ctpl.com/support
-AppUpdatesURL=https://www.ctpl.com/updates
+AppPublisherURL={#MyAppURL}
+AppSupportURL={#MyAppURL}/support
+AppUpdatesURL={#MyAppURL}/updates
+AppContact=support@ctpl.com
+AppCopyright=Copyright (C) 2026 CTPL. All rights reserved.
+VersionInfoVersion=1.0.0.0
+VersionInfoCompany=CTPL
+VersionInfoDescription=NexPro PDF - Professional PDF Editor
+VersionInfoCopyright=Copyright (C) 2026 CTPL
+VersionInfoProductName=NexPro PDF
+VersionInfoProductVersion=1.0.0.0
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
@@ -32,6 +42,12 @@ WizardStyle=modern
 ; Privileges
 PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
+; Upgrade behavior
+CloseApplications=yes
+CloseApplicationsFilter=NexProPDF.exe
+RestartApplications=yes
+UsePreviousAppDir=yes
+UsePreviousGroup=yes
 ; Uninstaller
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName}
@@ -66,6 +82,32 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 
 [Code]
 function InitializeSetup(): Boolean;
+var
+  InstalledVersion: String;
 begin
   Result := True;
+  { Check if NexPro PDF is already installed }
+  if RegQueryStringValue(HKLM,
+    'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{8F6B3E7A-5D4C-4B2A-9E1F-0A8B7C6D5E4F}_is1',
+    'DisplayVersion', InstalledVersion) or
+    RegQueryStringValue(HKCU,
+    'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{8F6B3E7A-5D4C-4B2A-9E1F-0A8B7C6D5E4F}_is1',
+    'DisplayVersion', InstalledVersion) then
+  begin
+    if InstalledVersion = '{#MyAppVersion}' then
+    begin
+      if MsgBox('{#MyAppName} v' + InstalledVersion + ' is already installed.' + #13#10 + #13#10 +
+                'Do you want to repair/reinstall it?',
+                mbConfirmation, MB_YESNO) = IDNO then
+        Result := False;
+    end
+    else
+    begin
+      if MsgBox('{#MyAppName} v' + InstalledVersion + ' is currently installed.' + #13#10 + #13#10 +
+                'Do you want to upgrade to v{#MyAppVersion}?' + #13#10 +
+                'Your settings will be preserved.',
+                mbConfirmation, MB_YESNO) = IDNO then
+        Result := False;
+    end;
+  end;
 end;

@@ -167,21 +167,13 @@ class ConnectedRibbonBar(RibbonBar):
         self._clear_tool_area()
 
         # Security features - CONNECTED
-        password_btn = self._create_tool_button("Password", "Add password protection")
-        password_btn.clicked.connect(self.actions.set_password)
-
-        encrypt_btn = self._create_tool_button("Encrypt", "Encrypt PDF with AES-256")
-        encrypt_btn.clicked.connect(self.actions.set_password)  # Same as password
-
-        permissions_btn = self._create_tool_button("Permissions", "Set document permissions")
-        permissions_btn.clicked.connect(self.actions.set_permissions)
+        encrypt_btn = self._create_tool_button("Encrypt", "Encrypt PDF with password & permissions")
+        encrypt_btn.clicked.connect(self.actions.encrypt_pdf)
 
         watermark_btn = self._create_tool_button("Watermark", "Add watermark")
         watermark_btn.clicked.connect(self.actions.add_watermark)
 
-        self.tool_layout.addWidget(password_btn)
         self.tool_layout.addWidget(encrypt_btn)
-        self.tool_layout.addWidget(permissions_btn)
         self.tool_layout.addWidget(watermark_btn)
 
         self.tool_layout.addStretch()

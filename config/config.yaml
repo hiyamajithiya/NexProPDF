@@ -33,6 +33,10 @@ logging:
   max_file_size_mb: 10
   backup_count: 5
 
+updates:
+  check_on_startup: true
+  github_repo: "hiyamajithiya/NexProPDF"
+
 paths:
   temp_dir: "temp"
   cache_dir: "cache"
