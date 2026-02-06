@@ -243,7 +243,7 @@ class TrialExpiredDialog(QDialog):
         # Message
         message = QLabel(
             "Thank you for trying NexPro PDF!\n\n"
-            "Your 1-year trial period has ended. To continue using NexPro PDF, "
+            "Your 180-day trial period has ended. To continue using NexPro PDF, "
             "please purchase a subscription.\n\n"
             "Contact CA Himanshu Majithiya for subscription details."
         )

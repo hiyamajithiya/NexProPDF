@@ -15,7 +15,7 @@ import base64
 class LicenseManager:
     """Manages application licensing and trial period"""
 
-    TRIAL_DAYS = 365  # 1 year trial period
+    TRIAL_DAYS = 180  # 6 months trial period
     LICENSE_FILE = "nexpro_license.dat"
 
     def __init__(self):
@@ -102,7 +102,7 @@ class LicenseManager:
         days_remaining = (expiry_date - datetime.now()).days
 
         if days_remaining <= 0:
-            return False, 0, "Your 1-year trial has expired. Please purchase a subscription."
+            return False, 0, "Your 180-day trial has expired. Please purchase a subscription."
 
         if days_remaining <= 30:
             return True, days_remaining, f"Trial expires in {days_remaining} days. Consider purchasing now."

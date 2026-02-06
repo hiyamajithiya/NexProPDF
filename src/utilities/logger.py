@@ -3,27 +3,37 @@ Logging utility for NexPro PDF
 """
 
 import logging
+import os
 import sys
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
 from datetime import datetime
 
 
-def setup_logger(name="NexProPDF", log_dir="logs", level=logging.INFO):
+def _get_log_dir():
+    """Get writable log directory in user's AppData"""
+    if os.name == 'nt':
+        base = os.environ.get('APPDATA', os.path.expanduser('~'))
+    else:
+        base = os.path.expanduser('~')
+    return Path(base) / 'NexProPDF' / 'logs'
+
+
+def setup_logger(name="NexProPDF", log_dir=None, level=logging.INFO):
     """
     Setup application logger with file and console handlers
 
     Args:
         name: Logger name
-        log_dir: Directory for log files
+        log_dir: Directory for log files (defaults to AppData/NexProPDF/logs)
         level: Logging level
 
     Returns:
         Logger instance
     """
 
-    # Create logs directory if it doesn't exist
-    log_path = Path(log_dir)
+    # Use AppData location to avoid permission issues in Program Files
+    log_path = Path(log_dir) if log_dir else _get_log_dir()
     log_path.mkdir(parents=True, exist_ok=True)
 
     # Create logger
