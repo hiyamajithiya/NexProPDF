@@ -287,7 +287,8 @@ class PDFSecurity:
                     fontsize=font_size,
                     fontname="helv",
                     color=color,
-                    opacity=opacity,
+                    fill_opacity=opacity,
+                    stroke_opacity=opacity,
                     morph=(pivot, rot_matrix)
                 )
 
@@ -327,17 +328,29 @@ class PDFSecurity:
 
             pdf = fitz.open(input_file)
 
-            # Get image dimensions using PIL
+            import io
+
+            # Get image and apply opacity using PIL
             pil_img = Image.open(watermark_image)
-            img_width, img_height = pil_img.size
 
             # Scale down large images to fit reasonably on page
+            img_width, img_height = pil_img.size
             max_watermark_size = 200
             if img_width > max_watermark_size or img_height > max_watermark_size:
                 scale = max_watermark_size / max(img_width, img_height)
                 img_width = int(img_width * scale)
                 img_height = int(img_height * scale)
+                pil_img = pil_img.resize((img_width, img_height), Image.Resampling.LANCZOS)
 
+            # Apply opacity via alpha channel
+            rgba_img = pil_img.convert('RGBA')
+            alpha_channel = rgba_img.split()[3]
+            alpha_channel = alpha_channel.point(lambda p: int(p * opacity))
+            rgba_img.putalpha(alpha_channel)
+
+            buf = io.BytesIO()
+            rgba_img.save(buf, format='PNG')
+            watermark_bytes = buf.getvalue()
             pil_img.close()
 
             for page_num in range(len(pdf)):
@@ -366,9 +379,8 @@ class PDFSecurity:
                     x = (page_rect.width - img_width) / 2
                     y = (page_rect.height - img_height) / 2
 
-                # Insert image with opacity
                 rect = fitz.Rect(x, y, x + img_width, y + img_height)
-                page.insert_image(rect, filename=watermark_image, overlay=True, alpha=int(opacity * 255))
+                page.insert_image(rect, stream=watermark_bytes, overlay=True)
 
             pdf.save(output_file)
             pdf.close()

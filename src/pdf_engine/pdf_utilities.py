@@ -580,27 +580,34 @@ class PDFUtilities:
                     image_bytes = base["image"]
                     img_w = base.get("width", 0)
                     img_h = base.get("height", 0)
+                    orig_cs = base.get("colorspace", 0)  # colorspace component count
 
                     # Skip very small images (icons, logos) - not worth recompressing
                     if img_w * img_h < 2500 or len(image_bytes) < 5000:
                         continue
 
                     pil_img = Image.open(io.BytesIO(image_bytes))
+                    is_grayscale = pil_img.mode == 'L'
 
-                    # Convert palette/indexed/CMYK/RGBA to RGB for JPEG
+                    # Convert palette/indexed/CMYK/RGBA to appropriate mode
                     if pil_img.mode in ('P', 'PA'):
                         pil_img = pil_img.convert('RGBA').convert('RGB')
+                        is_grayscale = False
                     elif pil_img.mode == 'CMYK':
                         pil_img = pil_img.convert('RGB')
-                    elif pil_img.mode == 'RGBA' or pil_img.mode == 'LA':
+                        is_grayscale = False
+                    elif pil_img.mode in ('RGBA', 'LA'):
                         # Flatten alpha onto white background
                         bg = Image.new('RGB', pil_img.size, (255, 255, 255))
                         bg.paste(pil_img, mask=pil_img.split()[-1])
                         pil_img = bg
+                        is_grayscale = False
                     elif pil_img.mode == 'L':
-                        pil_img = pil_img.convert('RGB')
+                        # Keep grayscale as-is for JPEG (saves space)
+                        is_grayscale = True
                     elif pil_img.mode != 'RGB':
                         pil_img = pil_img.convert('RGB')
+                        is_grayscale = False
 
                     # Downscale oversized images
                     max_dim = max(pil_img.width, pil_img.height)
@@ -620,31 +627,27 @@ class PDFUtilities:
                     if len(new_data) < len(image_bytes):
                         pdf.update_stream(xref, new_data)
                         pdf.xref_set_key(xref, "Filter", "/DCTDecode")
-                        pdf.xref_set_key(xref, "ColorSpace", "/DeviceRGB")
+                        if is_grayscale:
+                            pdf.xref_set_key(xref, "ColorSpace", "/DeviceGray")
+                        else:
+                            pdf.xref_set_key(xref, "ColorSpace", "/DeviceRGB")
                         pdf.xref_set_key(xref, "BitsPerComponent", "8")
                         pdf.xref_set_key(xref, "Width", str(pil_img.width))
                         pdf.xref_set_key(xref, "Height", str(pil_img.height))
                         pdf.xref_set_key(xref, "DecodeParms", "null")
 
-                        # Clear soft mask if image was flattened to RGB
-                        smask_xref = img_info[1]
-                        if smask_xref > 0:
-                            try:
-                                pdf.xref_set_key(xref, "SMask", "null")
-                            except Exception:
-                                pass
-
                 except Exception as e:
                     self.logger.debug(f"Skipping image xref {xref}: {e}")
                     continue
 
+        # NOTE: Do NOT use clean=True here - it rebuilds the PDF structure
+        # and can discard valid content after manual stream/xref modifications
         pdf.save(
             output_file,
             garbage=4,
             deflate=True,
             deflate_images=True,
             deflate_fonts=True,
-            clean=True,
         )
         pdf.close()
 

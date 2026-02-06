@@ -72,9 +72,7 @@ class PDFSignature:
                 "To enable USB token support:\n"
                 "1. Install Visual C++ Build Tools from:\n"
                 "   https://visualstudio.microsoft.com/visual-cpp-build-tools/\n"
-                "2. Then run: pip install PyKCS11 endesive\n\n"
-                "Alternative: Use 'Sign with Certificate File' option\n"
-                "to sign with .pfx or .p12 certificate files."
+                "2. Then run: pip install PyKCS11 endesive"
             )
 
     def _discover_token_dlls(self) -> List[str]:
@@ -160,11 +158,14 @@ class PDFSignature:
     def detect_usb_tokens(self) -> List[Dict]:
         """
         Detect available USB tokens connected to the system.
+        Reads X.509 certificate CN (person's name) from each token.
 
         Returns:
-            List of detected tokens with their information
+            List of detected tokens with their information including
+            certificate holder's name from the X.509 certificate.
         """
         tokens = []
+        seen_serials = set()  # Avoid duplicates from multiple DLLs
 
         try:
             import PyKCS11 as PK11
@@ -193,16 +194,57 @@ class PDFSignature:
                         for slot in slots:
                             try:
                                 token_info = pkcs11.getTokenInfo(slot)
+                                serial = token_info.serialNumber.strip()
+
+                                # Skip if we already found this token via another DLL
+                                if serial in seen_serials:
+                                    continue
+                                seen_serials.add(serial)
+
+                                token_label = token_info.label.strip()
+                                manufacturer = token_info.manufacturerID.strip()
+
+                                # Read certificate holder's name from the X.509
+                                # certificate stored on the token
+                                cert_holder_name = ""
+                                cert_org = ""
+                                cert_valid_from = ""
+                                cert_valid_until = ""
+                                cert_issuer = ""
+                                try:
+                                    cert_holder_name, cert_org, cert_valid_from, cert_valid_until, cert_issuer = \
+                                        self._read_certificate_cn_from_token(
+                                            pkcs11, slot, dll_path
+                                        )
+                                except Exception as e:
+                                    self.logger.debug(
+                                        f"Could not read certificate from token "
+                                        f"{token_label}: {e}"
+                                    )
+
+                                # Use certificate CN as primary display name,
+                                # fall back to token label only if cert read fails
+                                display_name = cert_holder_name or token_label
+
                                 tokens.append({
                                     'slot': slot,
-                                    'label': token_info.label.strip(),
-                                    'manufacturer': token_info.manufacturerID.strip(),
+                                    'label': token_label,
+                                    'display_name': display_name,
+                                    'cert_holder': cert_holder_name,
+                                    'cert_org': cert_org,
+                                    'cert_issuer': cert_issuer,
+                                    'cert_valid_from': cert_valid_from,
+                                    'cert_valid_until': cert_valid_until,
+                                    'manufacturer': manufacturer,
                                     'model': token_info.model.strip(),
-                                    'serial': token_info.serialNumber.strip(),
+                                    'serial': serial,
                                     'dll_path': dll_path,
                                     'flags': token_info.flags
                                 })
-                                self.logger.info(f"Found token: {token_info.label.strip()}")
+                                self.logger.info(
+                                    f"Found token: {token_label} | "
+                                    f"Certificate holder: {cert_holder_name or 'N/A'}"
+                                )
                             except Exception as e:
                                 self.logger.debug(f"Could not get token info for slot {slot}: {e}")
 
@@ -218,6 +260,51 @@ class PDFSignature:
         except Exception as e:
             self.logger.error(f"Error detecting USB tokens: {e}")
             return []
+
+    def _read_certificate_cn_from_token(self, pkcs11, slot: int,
+                                         dll_path: str) -> Tuple[str, str, str, str, str]:
+        """
+        Open a read-only PKCS#11 session (no PIN needed) to read the
+        X.509 certificate and extract the holder's Common Name (CN).
+
+        Returns:
+            Tuple of (common_name, organization, valid_from, valid_until, issuer)
+        """
+        import PyKCS11 as PK11
+
+        session = pkcs11.openSession(slot, PK11.CKF_SERIAL_SESSION)
+        try:
+            # Find certificate objects (public, no login needed)
+            cert_objects = session.findObjects([
+                (PK11.CKA_CLASS, PK11.CKO_CERTIFICATE)
+            ])
+
+            for cert_obj in cert_objects:
+                try:
+                    attrs = session.getAttributeValue(cert_obj, [PK11.CKA_VALUE])
+                    cert_data = bytes(attrs[0])
+
+                    if not cert_data:
+                        continue
+
+                    # Parse X.509 certificate to get CN
+                    info = self._parse_certificate(cert_data)
+                    cn = info.get('subject', '')
+                    org = info.get('organization', '')
+                    valid_from = info.get('valid_from', '')
+                    valid_until = info.get('valid_until', '')
+                    issuer = info.get('issuer', '')
+
+                    if cn and cn != 'Unknown':
+                        self.logger.info(f"Certificate CN: {cn}, Org: {org}")
+                        return cn, org, valid_from, valid_until, issuer
+                except Exception as e:
+                    self.logger.debug(f"Could not read cert object: {e}")
+                    continue
+
+            return "", "", "", "", ""
+        finally:
+            session.closeSession()
 
     def get_certificates_from_token(self, dll_path: str, slot: int = 0, pin: str = None) -> List[Dict]:
         """

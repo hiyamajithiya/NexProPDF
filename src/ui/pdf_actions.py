@@ -1622,7 +1622,7 @@ class PDFActions:
 
     # Signature Operations
     def add_signature(self):
-        """Add digital signature - supports USB Token and Software Certificate"""
+        """Add digital signature using USB Token (DSC)"""
         if not self.main_window.current_file:
             QMessageBox.warning(
                 self.main_window,
@@ -1631,269 +1631,21 @@ class PDFActions:
             )
             return
 
-        # Show signature type selection dialog
-        from PyQt6.QtWidgets import QButtonGroup, QRadioButton
-
-        type_dialog = QDialog(self.main_window)
-        type_dialog.setWindowTitle("Digital Signature")
-        type_dialog.setMinimumWidth(450)
-        layout = QVBoxLayout(type_dialog)
-
-        # Title
-        title = QLabel("<h3>Choose Signature Method</h3>")
-        layout.addWidget(title)
-
-        # Option 1: USB Token
-        usb_radio = QRadioButton("USB Token (DSC) - ePass2003, Proxkey, etc.")
-        usb_radio.setStyleSheet("font-weight: bold; padding: 5px;")
-
-        # Check if USB token is supported
+        # Check if USB token signing is supported
         usb_supported, usb_message = self.pdf_signature.is_usb_token_supported()
-
-        usb_desc = QLabel(
-            "   Sign using hardware token with Class 2/3 DSC certificate.\n"
-            "   Most secure - private key never leaves the token."
-        )
-        usb_desc.setStyleSheet("color: #666; margin-left: 20px;")
-
         if not usb_supported:
-            usb_radio.setEnabled(False)
-            usb_desc.setText("   " + usb_message.replace("\n", "\n   "))
-            usb_desc.setStyleSheet("color: #999; margin-left: 20px; font-size: 11px;")
-
-        layout.addWidget(usb_radio)
-        layout.addWidget(usb_desc)
-
-        layout.addSpacing(10)
-
-        # Option 2: Software Certificate
-        pfx_radio = QRadioButton("Certificate File (.pfx / .p12)")
-        pfx_radio.setStyleSheet("font-weight: bold; padding: 5px;")
-        pfx_radio.setChecked(True)  # Default option
-
-        pfx_desc = QLabel(
-            "   Sign using software certificate file.\n"
-            "   Works with any .pfx or .p12 certificate."
-        )
-        pfx_desc.setStyleSheet("color: #666; margin-left: 20px;")
-
-        layout.addWidget(pfx_radio)
-        layout.addWidget(pfx_desc)
-
-        layout.addSpacing(20)
-
-        # Buttons
-        btn_layout = QHBoxLayout()
-        continue_btn = QPushButton("Continue")
-        continue_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #2196F3;
-                color: white;
-                padding: 8px 25px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover { background-color: #1976D2; }
-        """)
-        cancel_btn = QPushButton("Cancel")
-
-        btn_layout.addStretch()
-        btn_layout.addWidget(continue_btn)
-        btn_layout.addWidget(cancel_btn)
-        layout.addLayout(btn_layout)
-
-        continue_btn.clicked.connect(type_dialog.accept)
-        cancel_btn.clicked.connect(type_dialog.reject)
-
-        if type_dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-
-        if usb_radio.isChecked():
-            self._sign_with_usb_token()
-        else:
-            self._sign_with_certificate_file()
-
-    def _sign_with_certificate_file(self):
-        """Sign PDF using software certificate (.pfx/.p12)"""
-        from PyQt6.QtWidgets import QLineEdit
-
-        # Create dialog for certificate file signing
-        dialog = QDialog(self.main_window)
-        dialog.setWindowTitle("Sign with Certificate File")
-        dialog.setMinimumWidth(500)
-        layout = QVBoxLayout(dialog)
-
-        # Certificate file selection
-        layout.addWidget(QLabel("<b>1. Select Certificate File:</b>"))
-
-        file_layout = QHBoxLayout()
-        cert_path_input = QLineEdit()
-        cert_path_input.setPlaceholderText("Select .pfx or .p12 certificate file...")
-        cert_path_input.setReadOnly(True)
-
-        browse_btn = QPushButton("Browse...")
-        def browse_cert():
-            path, _ = QFileDialog.getOpenFileName(
-                dialog, "Select Certificate",
-                "", "Certificate Files (*.pfx *.p12);;All Files (*)"
-            )
-            if path:
-                cert_path_input.setText(path)
-
-        browse_btn.clicked.connect(browse_cert)
-        file_layout.addWidget(cert_path_input)
-        file_layout.addWidget(browse_btn)
-        layout.addLayout(file_layout)
-
-        # Password
-        layout.addWidget(QLabel("<b>2. Certificate Password:</b>"))
-        password_input = QLineEdit()
-        password_input.setEchoMode(QLineEdit.EchoMode.Password)
-        password_input.setPlaceholderText("Enter certificate password...")
-        layout.addWidget(password_input)
-
-        # Signature details
-        layout.addWidget(QLabel("<b>3. Signature Details:</b>"))
-
-        reason_input = QLineEdit()
-        reason_input.setPlaceholderText("Reason for signing")
-        reason_input.setText("Digitally Signed")
-        layout.addWidget(reason_input)
-
-        location_input = QLineEdit()
-        location_input.setPlaceholderText("Location")
-        location_input.setText("India")
-        layout.addWidget(location_input)
-
-        # Visible signature
-        from PyQt6.QtWidgets import QCheckBox
-        visible_check = QCheckBox("Add visible signature on PDF")
-        visible_check.setChecked(True)
-        layout.addWidget(visible_check)
-
-        # Page selection
-        page_layout = QHBoxLayout()
-        page_label = QLabel("Signature Page:")
-        from PyQt6.QtWidgets import QSpinBox
-        page_spin = QSpinBox()
-        page_spin.setMinimum(1)
-        page_spin.setMaximum(self.main_window.pdf_viewer.total_pages or 1)
-        page_spin.setValue(self.main_window.pdf_viewer.current_page + 1)
-        page_layout.addWidget(page_label)
-        page_layout.addWidget(page_spin)
-        page_layout.addStretch()
-        layout.addLayout(page_layout)
-
-        # Info
-        info_label = QLabel(
-            "<i>After clicking 'Next', draw a rectangle on the PDF to place your signature.</i>"
-        )
-        info_label.setStyleSheet("color: #666; padding: 5px;")
-        layout.addWidget(info_label)
-
-        layout.addSpacing(10)
-
-        # Buttons
-        btn_layout = QHBoxLayout()
-        sign_btn = QPushButton("Next - Place Signature")
-        sign_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4CAF50;
-                color: white;
-                padding: 10px 30px;
-                border: none;
-                border-radius: 5px;
-                font-weight: bold;
-            }
-            QPushButton:hover { background-color: #45a049; }
-        """)
-        cancel_btn = QPushButton("Cancel")
-
-        btn_layout.addStretch()
-        btn_layout.addWidget(sign_btn)
-        btn_layout.addWidget(cancel_btn)
-        layout.addLayout(btn_layout)
-
-        result = {"proceed": False}
-
-        def on_sign():
-            if not cert_path_input.text():
-                QMessageBox.warning(dialog, "Certificate Required", "Please select a certificate file")
-                return
-            if not password_input.text():
-                QMessageBox.warning(dialog, "Password Required", "Please enter the certificate password")
-                return
-            result["proceed"] = True
-            dialog.accept()
-
-        sign_btn.clicked.connect(on_sign)
-        cancel_btn.clicked.connect(dialog.reject)
-
-        if dialog.exec() != QDialog.DialogCode.Accepted or not result["proceed"]:
-            return
-
-        visible = visible_check.isChecked()
-        sig_page = page_spin.value() - 1
-
-        # Navigate to signature page
-        if sig_page != self.main_window.pdf_viewer.current_page:
-            self.main_window.pdf_viewer.go_to_page(sig_page)
-            QApplication.processEvents()
-
-        # Let user draw signature placement
-        sig_rect = None
-        if visible:
-            sig_rect = self._get_signature_placement()
-            if sig_rect is None:
-                self.main_window.statusBar().showMessage("Signature cancelled", 3000)
-                return
-
-        # Get output file
-        output_file, _ = QFileDialog.getSaveFileName(
-            self.main_window,
-            "Save Signed PDF As",
-            "",
-            "PDF Files (*.pdf)"
-        )
-
-        if not output_file:
-            return
-
-        # Sign the PDF
-        self.main_window.statusBar().showMessage("Signing PDF...")
-        QApplication.processEvents()
-
-        success, message = self.pdf_signature.sign_pdf_with_pfx(
-            self.main_window.current_file,
-            output_file,
-            cert_path_input.text(),
-            password_input.text(),
-            reason=reason_input.text() or "Digitally Signed",
-            location=location_input.text() or "India",
-            visible_signature=visible,
-            sig_page=sig_page,
-            sig_rect=sig_rect
-        )
-
-        if success:
-            self.main_window.statusBar().showMessage("PDF signed successfully!", 3000)
-            QMessageBox.information(
+            QMessageBox.warning(
                 self.main_window,
-                "Success",
-                f"{message}\n\nOutput: {output_file}"
+                "USB Token Not Supported",
+                f"USB Token signing is not available.\n\n{usb_message}"
             )
-            self.main_window.load_pdf(output_file)
-        else:
-            self.main_window.statusBar().showMessage("Signing failed", 3000)
-            QMessageBox.critical(
-                self.main_window,
-                "Signing Failed",
-                f"Failed to sign PDF.\n\n{message}"
-            )
+            return
+
+        # Go directly to USB token signing
+        self._sign_with_usb_token()
 
     def _sign_with_usb_token(self):
-        """Sign PDF using USB Token (DSC)"""
+        """Sign PDF using USB Token (DSC) - detects token and shows certificate holder's name"""
         # Detect USB tokens
         self.main_window.statusBar().showMessage("Detecting USB tokens...")
         QApplication.processEvents()
@@ -1906,15 +1658,13 @@ class PDFActions:
             msg.setWindowTitle("No USB Token Detected")
             msg.setText("No USB Token (DSC) detected!")
             msg.setInformativeText(
-                "<b>To sign PDFs digitally, you need:</b><br><br>"
-                "1. A USB Token (ePass2003, Proxkey, etc.) with DSC<br>"
-                "2. Token driver software installed<br>"
-                "3. Token inserted in USB port<br><br>"
-                "<b>Common tokens in India:</b><br>"
-                "• ePass2003 (most common)<br>"
-                "• WatchData ProxKey<br>"
-                "• eMudhra Token<br><br>"
-                "Contact your DSC provider for token and driver."
+                "<b>Please check:</b><br><br>"
+                "1. USB Token is inserted in USB port<br>"
+                "2. Token driver software is installed<br>"
+                "3. Token LED is blinking/lit<br><br>"
+                "<b>Supported tokens:</b><br>"
+                "ePass2003, WatchData ProxKey, eMudhra<br><br>"
+                "If problem persists, reinstall your token driver."
             )
             msg.setStandardButtons(QMessageBox.StandardButton.Ok)
             msg.exec()
@@ -1924,22 +1674,63 @@ class PDFActions:
         # Create signature dialog
         dialog = QDialog(self.main_window)
         dialog.setWindowTitle("Digital Signature - USB Token")
-        dialog.setMinimumWidth(500)
+        dialog.setMinimumWidth(520)
 
         layout = QVBoxLayout(dialog)
 
-        # Token selection
-        token_group = QLabel("<b>1. Select USB Token:</b>")
+        # Token selection with certificate holder name
+        token_group = QLabel("<b>1. Select DSC Token:</b>")
         layout.addWidget(token_group)
 
         from PyQt6.QtWidgets import QComboBox
         token_combo = QComboBox()
         for token in tokens:
-            token_combo.addItem(
-                f"{token['label']} ({token['manufacturer']})",
-                token
-            )
+            # Show certificate holder's name (person's name) as primary
+            display = token.get('display_name', token['label'])
+            org = token.get('cert_org', '')
+            if org:
+                combo_text = f"{display}  ({org})"
+            else:
+                combo_text = f"{display}  ({token['manufacturer']})"
+            token_combo.addItem(combo_text, token)
         layout.addWidget(token_combo)
+
+        # Show certificate details for selected token
+        cert_info_label = QLabel()
+        cert_info_label.setStyleSheet(
+            "color: #444; background: #f5f5f5; padding: 8px; "
+            "border-radius: 4px; font-size: 11px;"
+        )
+
+        def update_cert_info(index):
+            token = token_combo.itemData(index)
+            if not token:
+                return
+            holder = token.get('cert_holder', '') or token['label']
+            org = token.get('cert_org', '')
+            issuer = token.get('cert_issuer', '')
+            valid_until = token.get('cert_valid_until', '')
+            info_lines = [f"<b>Certificate Holder:</b> {holder}"]
+            if org:
+                info_lines.append(f"<b>Organization:</b> {org}")
+            if issuer:
+                # Clean up issuer string for display
+                issuer_short = issuer
+                if 'CN=' in issuer:
+                    import re
+                    cn_match = re.search(r'CN=([^,>]+)', issuer)
+                    if cn_match:
+                        issuer_short = cn_match.group(1).strip()
+                info_lines.append(f"<b>Issued by:</b> {issuer_short}")
+            if valid_until:
+                info_lines.append(f"<b>Valid until:</b> {valid_until[:10]}")
+            cert_info_label.setText("<br>".join(info_lines))
+
+        token_combo.currentIndexChanged.connect(update_cert_info)
+        update_cert_info(0)  # Show info for first token
+        layout.addWidget(cert_info_label)
+
+        layout.addSpacing(5)
 
         # PIN entry
         pin_group = QLabel("<b>2. Enter Token PIN:</b>")
@@ -1986,16 +1777,15 @@ class PDFActions:
 
         # Info label
         info_label = QLabel(
-            "<i>Note: After clicking 'Next', you can draw a rectangle on the PDF<br>"
-            "to place your visible signature (like Adobe Acrobat).<br>"
+            "<i>After clicking 'Sign', draw a rectangle on the PDF to place your signature.<br>"
             "Your private key never leaves the USB token.</i>"
         )
-        info_label.setStyleSheet("color: #666; padding: 10px;")
+        info_label.setStyleSheet("color: #666; padding: 8px;")
         layout.addWidget(info_label)
 
         # Buttons
         btn_layout = QHBoxLayout()
-        sign_btn = QPushButton("Next - Place Signature")
+        sign_btn = QPushButton("Sign - Place Signature")
         sign_btn.setStyleSheet("""
             QPushButton {
                 background-color: #4CAF50;
@@ -2064,7 +1854,8 @@ class PDFActions:
             return
 
         # Show progress
-        self.main_window.statusBar().showMessage("Signing PDF with USB Token...")
+        signer_display = selected_token.get('display_name', selected_token['label'])
+        self.main_window.statusBar().showMessage(f"Signing PDF as {signer_display}...")
         QApplication.processEvents()
 
         # Sign the PDF
@@ -2087,7 +1878,7 @@ class PDFActions:
             QMessageBox.information(
                 self.main_window,
                 "Success",
-                f"{message}\n\nToken: {selected_token['label']}\nOutput: {output_file}"
+                f"{message}\n\nSigner: {signer_display}\nOutput: {output_file}"
             )
             self.main_window.load_pdf(output_file)
         else:
@@ -2221,12 +2012,16 @@ class PDFActions:
         if tokens:
             info_parts.append("=== USB TOKENS DETECTED ===\n")
             for i, token in enumerate(tokens, 1):
+                holder = token.get('cert_holder', '') or token['label']
+                org = token.get('cert_org', '')
+                valid_until = token.get('cert_valid_until', '')
                 info_parts.append(
                     f"Token {i}:\n"
-                    f"  Label: {token['label']}\n"
-                    f"  Manufacturer: {token['manufacturer']}\n"
+                    f"  Certificate Holder: {holder}\n"
+                    f"  Organization: {org or 'N/A'}\n"
+                    f"  Token: {token['label']} ({token['manufacturer']})\n"
                     f"  Model: {token['model']}\n"
-                    f"  Serial: {token['serial']}\n"
+                    f"  Valid Until: {valid_until[:10] if valid_until else 'N/A'}\n"
                 )
 
         if certs:
