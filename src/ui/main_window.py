@@ -518,25 +518,59 @@ class MainWindow(QMainWindow):
             self.pdf_viewer._save_edited_text()
             return
 
-        if self.current_file:
-            self.logger.info(f"Saving file: {self.current_file}")
-            self.status_label.setText("File saved")
+        if self.current_file and hasattr(self, 'pdf_viewer') and self.pdf_viewer.pdf_document:
+            try:
+                self.logger.info(f"Saving file: {self.current_file}")
+                import tempfile, shutil
+
+                # Save to temp file first, then replace original
+                temp_fd, temp_path = tempfile.mkstemp(suffix='.pdf')
+                import os
+                os.close(temp_fd)
+
+                self.pdf_viewer.pdf_document.save(temp_path, garbage=4, deflate=True, clean=True)
+
+                # Close current document, replace file, reopen
+                self.pdf_viewer.pdf_document.close()
+                shutil.move(temp_path, self.current_file)
+                self.pdf_viewer.pdf_document = __import__('fitz').open(self.current_file)
+                self.pdf_viewer.render_current_page()
+
+                self.status_label.setText("File saved successfully")
+                self.logger.info("File saved successfully")
+            except Exception as e:
+                self.logger.error(f"Error saving file: {e}")
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.critical(self, "Save Error", f"Failed to save file: {e}")
         else:
             self.save_file_as()
 
     def save_file_as(self):
         """Save PDF with new name"""
-        from PyQt6.QtWidgets import QFileDialog
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+
+        if not hasattr(self, 'pdf_viewer') or not self.pdf_viewer.pdf_document:
+            QMessageBox.warning(self, "No PDF", "No PDF document to save.")
+            return
+
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Save PDF As",
-            "",
+            self.current_file or "",
             "PDF Files (*.pdf)"
         )
         if file_path:
-            self.logger.info(f"Saving file as: {file_path}")
-            self.current_file = file_path
-            self.status_label.setText(f"Saved as: {file_path}")
+            try:
+                self.logger.info(f"Saving file as: {file_path}")
+                self.pdf_viewer.pdf_document.save(file_path, garbage=4, deflate=True, clean=True)
+                self.current_file = file_path
+                self.status_label.setText(f"Saved as: {file_path}")
+
+                # Reload from the new file
+                self.load_pdf(file_path)
+            except Exception as e:
+                self.logger.error(f"Error saving file: {e}")
+                QMessageBox.critical(self, "Save Error", f"Failed to save file: {e}")
 
     def save_all_edits(self):
         """Save all pending text edits to PDF"""

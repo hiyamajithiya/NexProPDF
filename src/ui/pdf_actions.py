@@ -925,46 +925,56 @@ class PDFActions:
                            font_size: int, align: int = 0):
         """Save text to the selected area in PDF"""
         import fitz
-        pdf_doc = fitz.open(self.main_window.current_file)
 
-        # Get current page
-        current_page_num = self.main_window.pdf_viewer.current_page
-        page = pdf_doc[current_page_num]
+        try:
+            # Use the viewer's existing document to avoid resource conflicts
+            pdf_doc = self.main_window.pdf_viewer.pdf_document
+            if not pdf_doc:
+                QMessageBox.warning(self.main_window, "Error", "No PDF document loaded")
+                return
 
-        # Create rectangle for text box
-        rect = fitz.Rect(x0, y0, x1, y1)
+            current_page_num = self.main_window.pdf_viewer.current_page
+            page = pdf_doc[current_page_num]
 
-        # Insert text with alignment
-        page.insert_textbox(
-            rect,
-            text,
-            fontsize=font_size,
-            fontname="helv",
-            color=(0, 0, 0),
-            align=align  # 0=Left, 1=Center, 2=Right, 3=Justify
-        )
+            # Create rectangle for text box
+            rect = fitz.Rect(x0, y0, x1, y1)
 
-        # Save
-        output_file, _ = QFileDialog.getSaveFileName(
-            self.main_window,
-            "Save PDF As",
-            "",
-            "PDF Files (*.pdf)"
-        )
-
-        if output_file:
-            pdf_doc.save(output_file)
-            pdf_doc.close()
-            QMessageBox.information(
-                self.main_window,
-                "Success",
-                f"Text added successfully!"
+            # Insert text with alignment
+            page.insert_textbox(
+                rect,
+                text,
+                fontsize=font_size,
+                fontname="helv",
+                color=(0, 0, 0),
+                align=align  # 0=Left, 1=Center, 2=Right, 3=Justify
             )
-            self.main_window.load_pdf(output_file)
-            self.main_window.status_label.setText("Text added successfully")
-        else:
-            pdf_doc.close()
-            self.main_window.status_label.setText("Save cancelled")
+
+            # Save to a new file (incremental save to same file not safe while open)
+            output_file, _ = QFileDialog.getSaveFileName(
+                self.main_window,
+                "Save PDF As",
+                self.main_window.current_file,
+                "PDF Files (*.pdf)"
+            )
+
+            if output_file:
+                pdf_doc.save(output_file, garbage=4, deflate=True, clean=True)
+                QMessageBox.information(
+                    self.main_window,
+                    "Success",
+                    "Text added successfully!"
+                )
+                # Reload the saved file
+                self.main_window.load_pdf(output_file)
+                self.main_window.status_label.setText("Text added successfully")
+            else:
+                # User cancelled - undo the text insertion by reloading
+                current_file = self.main_window.current_file
+                self.main_window.load_pdf(current_file)
+                self.main_window.status_label.setText("Text addition cancelled")
+        except Exception as e:
+            self.main_window.status_label.setText(f"Error adding text: {e}")
+            QMessageBox.critical(self.main_window, "Error", f"Failed to add text: {e}")
 
     def add_image(self):
         """Add image to PDF by selecting area first"""
